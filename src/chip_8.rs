@@ -6,6 +6,9 @@ use std::{
     time,
 };
 
+use chrono::{Utc, NaiveTime};
+
+
 // blog used : https://tobiasvl.github.io/blog/write-a-chip-8-emulator/
 
 pub struct Chip8 {
@@ -44,7 +47,7 @@ impl Chip8 {
     const SCREEN_WIDTH : usize = 64;
     const PROGRAM_MEMORY_SIZE : usize = 2048;
     const STACK_SIZE : usize = 16;
-    const CLOCK_SLEEP_TIME_SECONDS : f64 = 1.0 / 1_000_000.0;
+    const CLOCK_SLEEP_TIME_SECONDS : f64 = 1.0 / 700.0;
 
     pub fn new() -> Chip8 {
         Chip8 {
@@ -98,26 +101,31 @@ impl Chip8 {
     /// the loop will run at a fixed speed of 1mhz simulated
     pub fn start_processor_loop(&mut self) {
         loop {
+            let instruction_start_time = time::Instant::now();
+
             // if the program counter has run out of instructions break out of the processor loop
             if self.program_counter_register as usize > Self::PROGRAM_MEMORY_SIZE - 1 { break }
-
+            
             // read in an instruction. this is basically the fetch step
             let instruction = self.memory[self.program_counter_register as usize];
 
             // decode and execute will both read the contents of the instruction and then execute the instruction afterwards
             self.decode_and_execute(instruction);
-
+            
             // thise is here for debugging purposes to see what register 6 is doing
             println!("{}",self.general_purpose_registers[6]);
-
+            
             // if there was a jump (or later on probably a call) dont increment the program counter
             if !self.jumped_flag_register {
                 self.program_counter_register += 1;
             } else {
                 self.jumped_flag_register = false;
             }
-
-            thread::sleep(time::Duration::from_secs_f64(Self::CLOCK_SLEEP_TIME_SECONDS));
+            
+            let operation_duration = Self::CLOCK_SLEEP_TIME_SECONDS -instruction_start_time.elapsed().as_secs_f64();
+            if operation_duration > 0.0 {
+                thread::sleep(time::Duration::from_secs_f64(operation_duration));
+            }
         }
     }
 
@@ -186,7 +194,7 @@ impl Chip8 {
             i if i & FXXX_BITMASK == 0x5000 => {}
 
             _ => {
-                print!("");
+                // print!("");
             }
         }
     }
