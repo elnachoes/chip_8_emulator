@@ -6,16 +6,19 @@ use std::{
     time,
 };
 
-use chrono::{Utc, NaiveTime};
-
-
 // blog used : https://tobiasvl.github.io/blog/write-a-chip-8-emulator/
+
+pub enum BinaryOp {
+    Or,
+    And,
+    Xor,
+}
 
 pub struct Chip8 {
     // memory for the chip8 should be 4k
     // since I am using u16s for the instructions the size of the vector is 4096 / 2 = 2048
     // program memory should be full of nop statements by default wich are 0x0000
-    pub memory : Vec<u16>,
+    pub memory : Vec<u8>,
     
     // the display is monochrome so the bytes representing pixels can just be bools
     // the display size should be 32 by 64
@@ -37,6 +40,7 @@ pub struct Chip8 {
     // flag registers
     pub vf_flag_register : bool,
     pub jumped_flag_register : bool,
+    pub carry_flag_register : bool,
 
     // 16 general purpose 8 bit registers 
     pub general_purpose_registers : Vec<u8>,
@@ -45,27 +49,29 @@ pub struct Chip8 {
 impl Chip8 {
     const SCREEN_HEIGHT : usize = 32;
     const SCREEN_WIDTH : usize = 64;
-    const PROGRAM_MEMORY_SIZE : usize = 2048;
-    const STACK_SIZE : usize = 16;
+    const PROGRAM_MEMORY_SIZE : usize = 4096;
     const CLOCK_SLEEP_TIME_SECONDS : f64 = 1.0 / 700.0;
 
     pub fn new() -> Chip8 {
         Chip8 {
             memory : vec![0; Self::PROGRAM_MEMORY_SIZE],
             display : vec![vec![true; Self::SCREEN_WIDTH]; Self::SCREEN_HEIGHT],
-            stack : vec![0; Self::STACK_SIZE],
+            stack : Vec::new(),
             program_counter_register : 0,
             index_register : 0,
             delay_timer_register : 0,
             sound_timer_register : 0,
             vf_flag_register : false, 
             jumped_flag_register : false,
+            carry_flag_register : false,
             general_purpose_registers : vec![0; 16],
         }
     }
 
     //TODO : ADD ERROR HANDLING
     pub fn load_rom(&mut self, file_path : &String) {
+        const OPERAND_BITMASK : u16 = 0x00FF;
+
         let file_open_result = File::open(file_path);
 
         let file_handle = match file_open_result {
@@ -74,8 +80,9 @@ impl Chip8 {
         };
 
         let reader = BufReader::new(file_handle);
-        for (index, line) in reader.lines().enumerate() {
-            if index > Self::PROGRAM_MEMORY_SIZE - 1 {
+        let mut index = 0;
+        for (line_index, line) in reader.lines().enumerate() {
+            if line_index > Self::PROGRAM_MEMORY_SIZE - 1 {
                 panic!("error : your program is too large! 4096 bytes of program memory maximum")
             }
 
@@ -89,7 +96,10 @@ impl Chip8 {
                 _ => { panic!("error : instructions must be in radix hex like 'XXXX' !") }
             };
 
-            self.memory[index as usize] = instruction; 
+            self.memory[index as usize] = (instruction >> 8) as u8; 
+            self.memory[index as usize + 1] = (instruction & OPERAND_BITMASK) as u8; 
+            index += 2;
+            print!("")
         }
     }
 
@@ -105,19 +115,16 @@ impl Chip8 {
 
             // if the program counter has run out of instructions break out of the processor loop
             if self.program_counter_register as usize > Self::PROGRAM_MEMORY_SIZE - 1 { break }
-            
-            // read in an instruction. this is basically the fetch step
-            let instruction = self.memory[self.program_counter_register as usize];
 
             // decode and execute will both read the contents of the instruction and then execute the instruction afterwards
-            self.decode_and_execute(instruction);
             
-            // thise is here for debugging purposes to see what register 6 is doing
-            println!("{}",self.general_purpose_registers[6]);
+            let instruction = self.fetch();
+            
+            self.decode_and_execute(instruction);
             
             // if there was a jump (or later on probably a call) dont increment the program counter
             if !self.jumped_flag_register {
-                self.program_counter_register += 1;
+                self.program_counter_register += 2;
             } else {
                 self.jumped_flag_register = false;
             }
@@ -127,6 +134,12 @@ impl Chip8 {
                 thread::sleep(time::Duration::from_secs_f64(operation_duration));
             }
         }
+    }
+
+    pub fn fetch(&self) -> u16 {
+        let opcode = self.memory[self.program_counter_register as usize];
+        let operand = self.memory[self.program_counter_register as usize + 1];
+        ((opcode as u16) << 8) + operand as u16
     }
 
     /// this is a function that will debug and execute a single instruction
@@ -176,26 +189,36 @@ impl Chip8 {
             i if i & FXXX_BITMASK == 0xD000 => { self.draw_display_instruction() }
 
             // TODO return
-            0x00EE => {}
+            0x00EE => { self.return_instruction() }
 
             // TODO call
-            i if i & FXXX_BITMASK == 0x2000 => {}
+            i if i & FXXX_BITMASK == 0x2000 => { 
+                let location = i & XFFF_BITMASK;
+                self.call_instruction(location);
+            }
 
             // TODO skip if vx is equal to nn
-            i if i & FXXX_BITMASK == 0x3000 => {}
+            i if i & FXXX_BITMASK == 0x3000 || 
+                 i & FXXX_BITMASK == 0x4000 || 
+                 i & FXXX_BITMASK == 0x5000 || 
+                 i & FXXX_BITMASK == 0x9000 => {
+                let register = (i & XFXX_BITMASK) >> 8;
+                let number = i & XXFF_BITMASK;
 
-            // TODO skip if vx is not equal to nn
-            i if i & FXXX_BITMASK == 0x4000 => {}
+                // these instructions are almost all the same and have one function for them
+                // the first item in each tuple returned here is the skip amount
+                // the second item in each tuple is weather the skip should occur if the reg and number are the same or not
+                let instruction_info = match i & FXXX_BITMASK {
+                    0x3000 => { (2, true) }
+                    0x4000 => { (2, false) }
+                    0x5000 => { (4, true) }
+                    _ => { (4, false) }
+                };
 
-            // TODO skip if vx is not equal to nn
-            i if i & FXXX_BITMASK == 0x4000 => {}
-
-            // TODO skip if vx is not equal to nn
-            i if i & FXXX_BITMASK == 0x5000 => {}
-
-            _ => {
-                // print!("");
+                self.skipif_vx_nn_instruction(self.general_purpose_registers[register as usize] as u16, number, instruction_info.0, instruction_info.1)
             }
+
+            _ => {}
         }
     }
 
@@ -226,5 +249,42 @@ impl Chip8 {
 
     fn draw_display_instruction(&self) {
         // TODO : implement this later but i would update it to draw to an actual window
+    }
+
+    fn return_instruction(&mut self) {
+        let return_address = self.stack.pop();
+        if let None = return_address {
+            panic!("error : stack underflow");
+        }
+        self.program_counter_register = return_address.unwrap();
+        self.jumped_flag_register = true;
+    }
+
+    fn call_instruction(&mut self, location : u16) {
+        // + 2 to make sure that it executes the NEXT instruction once a return is hit
+        self.stack.push(self.program_counter_register + 2);
+        self.program_counter_register = location;
+        self.jumped_flag_register = true
+    }
+
+    fn skipif_vx_nn_instruction(&mut self, register_value : u16, number : u16, skip_amount : u16, equality : bool) {
+        // this is a tricky way to have one instruction do 4 instructions
+        // if you have the register equal to the number and you do want them to be equal equality will be true and this is true
+        // if they are not equal and you do not want them to be equal this will go through
+        if !((register_value == number) ^ equality) {
+            self.program_counter_register += skip_amount
+        }
+    }
+
+    fn set_vx_vy_instruction(&mut self, source_register : u16, destination_register : u16) {
+        self.general_purpose_registers[destination_register as usize] = self.general_purpose_registers[source_register as usize];
+    }
+
+    fn bin_op_instruction(&mut self, source_register : u16, destination_register : u16, operation : BinaryOp) {
+        self.general_purpose_registers[destination_register as usize] = match operation {
+            BinaryOp::And => { self.general_purpose_registers[destination_register as usize] & self.general_purpose_registers[source_register as usize] }
+            BinaryOp::Or => { self.general_purpose_registers[destination_register as usize] | self.general_purpose_registers[source_register as usize] }
+            BinaryOp::Xor => { self.general_purpose_registers[destination_register as usize] ^ self.general_purpose_registers[source_register as usize] }
+        };
     }
 }
