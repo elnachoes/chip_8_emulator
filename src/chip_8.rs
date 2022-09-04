@@ -109,7 +109,6 @@ impl Chip8 {
 
             // thise is here for debugging purposes to see what register 6 is doing
             println!("{}",self.general_purpose_registers[6]);
-            print!("");
 
             // if there was a jump (or later on probably a call) dont increment the program counter
             if !self.jumped_flag_register {
@@ -167,6 +166,24 @@ impl Chip8 {
             // draw/display 
             //TODO FIX THIS
             i if i & FXXX_BITMASK == 0xD000 => { self.draw_display_instruction() }
+
+            // TODO return
+            0x00EE => {}
+
+            // TODO call
+            i if i & FXXX_BITMASK == 0x2000 => {}
+
+            // TODO skip if vx is equal to nn
+            i if i & FXXX_BITMASK == 0x3000 => {}
+
+            // TODO skip if vx is not equal to nn
+            i if i & FXXX_BITMASK == 0x4000 => {}
+
+            // TODO skip if vx is not equal to nn
+            i if i & FXXX_BITMASK == 0x4000 => {}
+
+            // TODO skip if vx is not equal to nn
+            i if i & FXXX_BITMASK == 0x5000 => {}
 
             _ => {
                 print!("");
