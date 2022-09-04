@@ -28,22 +28,22 @@ pub struct Chip8 {
     pub stack : Vec<u16>,
     
     // 32 bit register for program counter
-    pub program_counter_register : u16,
+    pub pc_reg : u16,
 
     // 16 bit register for memory index register
-    pub index_register : u16,
+    pub index_reg : u16,
 
     // 8 bit registers
     pub delay_timer_register : u8,
     pub sound_timer_register : u8,
     
     // flag registers
-    pub vf_flag_register : bool,
-    pub jumped_flag_register : bool,
+    pub vf_flag_reg : bool,
+    pub jumped_flag_reg : bool,
     pub carry_flag_register : bool,
 
     // 16 general purpose 8 bit registers 
-    pub general_purpose_registers : Vec<u8>,
+    pub general_regs : Vec<u8>,
 }
 
 impl Chip8 {
@@ -57,14 +57,14 @@ impl Chip8 {
             memory : vec![0; Self::PROGRAM_MEMORY_SIZE],
             display : vec![vec![true; Self::SCREEN_WIDTH]; Self::SCREEN_HEIGHT],
             stack : Vec::new(),
-            program_counter_register : 0,
-            index_register : 0,
+            pc_reg : 0,
+            index_reg : 0,
             delay_timer_register : 0,
             sound_timer_register : 0,
-            vf_flag_register : false, 
-            jumped_flag_register : false,
+            vf_flag_reg : false, 
+            jumped_flag_reg : false,
             carry_flag_register : false,
-            general_purpose_registers : vec![0; 16],
+            general_regs : vec![0; 16],
         }
     }
 
@@ -114,7 +114,7 @@ impl Chip8 {
             let instruction_start_time = time::Instant::now();
 
             // if the program counter has run out of instructions break out of the processor loop
-            if self.program_counter_register as usize > Self::PROGRAM_MEMORY_SIZE - 1 { break }
+            if self.pc_reg as usize > Self::PROGRAM_MEMORY_SIZE - 1 { break }
 
             // decode and execute will both read the contents of the instruction and then execute the instruction afterwards
             
@@ -123,10 +123,10 @@ impl Chip8 {
             self.decode_and_execute(instruction);
             
             // if there was a jump (or later on probably a call) dont increment the program counter
-            if !self.jumped_flag_register {
-                self.program_counter_register += 2;
+            if !self.jumped_flag_reg {
+                self.pc_reg += 2;
             } else {
-                self.jumped_flag_register = false;
+                self.jumped_flag_reg = false;
             }
             
             let operation_duration = Self::CLOCK_SLEEP_TIME_SECONDS -instruction_start_time.elapsed().as_secs_f64();
@@ -137,8 +137,8 @@ impl Chip8 {
     }
 
     pub fn fetch(&self) -> u16 {
-        let opcode = self.memory[self.program_counter_register as usize];
-        let operand = self.memory[self.program_counter_register as usize + 1];
+        let opcode = self.memory[self.pc_reg as usize];
+        let operand = self.memory[self.pc_reg as usize + 1];
         ((opcode as u16) << 8) + operand as u16
     }
 
@@ -153,7 +153,7 @@ impl Chip8 {
 
         match instruction {
             // 0x00E0 (clear screen) 
-            0x00E0 => { self.clear_screen_instruction() }
+            0x00E0 => { self.clear_display_instruction() }
 
             // 0x1NNN (jumps the program counter to a specific location)
             i if i & FXXX_BITMASK == 0x1000 => {
@@ -165,23 +165,26 @@ impl Chip8 {
             // 0x6XNN(set register VX)
             i if i & FXXX_BITMASK == 0x6000 => {
                 //
-                let register = (i & XFXX_BITMASK) >> 8;
-                let number = i & XXFF_BITMASK;
-                self.set_register_vx_instruction(register, number);
+                let reg = (i & XFXX_BITMASK) >> 8;
+                let num = i & XXFF_BITMASK;
+
+                let mut x = &self.general_regs[6];
+
+                self.set_vx_reg_instruction(reg as usize, num as u8);
             }
 
             // add value to register vx0
             i if i & FXXX_BITMASK == 0x7000 => {
                 //
-                let register = (i & XFXX_BITMASK) >> 8;
-                let number = i & XXFF_BITMASK;
-                self.add_register_vx_instruction(register, number);
+                let reg = (i & XFXX_BITMASK) >> 8;
+                let num = i & XXFF_BITMASK;
+                self.add_reg_vx_instruction(reg as usize, num as u8, false);
             }
 
             // set index register i
             i if i & FXXX_BITMASK == 0xA000 => {
                 let number = i & XFFF_BITMASK;
-                self.set_index_register_instruction(number)
+                self.set_index_reg_instruction(number)
             }
             
             // draw/display 
@@ -202,8 +205,8 @@ impl Chip8 {
                  i & FXXX_BITMASK == 0x4000 || 
                  i & FXXX_BITMASK == 0x5000 || 
                  i & FXXX_BITMASK == 0x9000 => {
-                let register = (i & XFXX_BITMASK) >> 8;
-                let number = i & XXFF_BITMASK;
+                let reg = (i & XFXX_BITMASK) >> 8;
+                let num = i & XXFF_BITMASK;
 
                 // these instructions are almost all the same and have one function for them
                 // the first item in each tuple returned here is the skip amount
@@ -215,7 +218,7 @@ impl Chip8 {
                     _ => { (4, false) }
                 };
 
-                self.skipif_vx_nn_instruction(self.general_purpose_registers[register as usize] as u16, number, instruction_info.0, instruction_info.1)
+                self.skipif_vx_reg_nn_instruction(self.general_regs[reg as usize] as u8, num as u8, instruction_info.0, instruction_info.1)
             }
 
             _ => {}
@@ -223,28 +226,18 @@ impl Chip8 {
     }
 
     /// this will set every byte storing info for the display to off
-    fn clear_screen_instruction(&mut self) {
+    fn clear_display_instruction(&mut self) {
         self.display = vec![vec![false; Self::SCREEN_WIDTH]; Self::SCREEN_HEIGHT];
     }
 
     /// this will just set the program counter to a specific location in program memory of NNN
     fn jump_instruction(&mut self, location : u16) {
-        self.program_counter_register = location;
-        self.jumped_flag_register = true
+        self.pc_reg = location;
+        self.jumped_flag_reg = true
     }
 
-    /// this will 
-    fn set_register_vx_instruction(&mut self, register : u16, number : u16) {
-        self.general_purpose_registers[register as usize] = number as u8
-    }
-
-    fn add_register_vx_instruction(&mut self, register : u16, number : u16) {
-        // wrapping add will add and account for overflows
-        self.general_purpose_registers[register as usize] = self.general_purpose_registers[register as usize].wrapping_add(number as u8)
-    }
-
-    fn set_index_register_instruction(&mut self, number : u16) {
-        self.index_register = number;
+    fn set_index_reg_instruction(&mut self, num : u16) {
+        self.index_reg = num;
     }
 
     fn draw_display_instruction(&self) {
@@ -256,35 +249,76 @@ impl Chip8 {
         if let None = return_address {
             panic!("error : stack underflow");
         }
-        self.program_counter_register = return_address.unwrap();
-        self.jumped_flag_register = true;
+        self.pc_reg = return_address.unwrap();
+        self.jumped_flag_reg = true;
     }
 
     fn call_instruction(&mut self, location : u16) {
         // + 2 to make sure that it executes the NEXT instruction once a return is hit
-        self.stack.push(self.program_counter_register + 2);
-        self.program_counter_register = location;
-        self.jumped_flag_register = true
+        self.stack.push(self.pc_reg + 2);
+        self.pc_reg = location;
+        self.jumped_flag_reg = true
     }
 
-    fn skipif_vx_nn_instruction(&mut self, register_value : u16, number : u16, skip_amount : u16, equality : bool) {
+    fn skipif_vx_reg_nn_instruction(&mut self, reg_val : u8, num : u8, skip_amount : u16, equality : bool) {
         // this is a tricky way to have one instruction do 4 instructions
         // if you have the register equal to the number and you do want them to be equal equality will be true and this is true
         // if they are not equal and you do not want them to be equal this will go through
-        if !((register_value == number) ^ equality) {
-            self.program_counter_register += skip_amount
+        if !((reg_val == num) ^ equality) {
+            self.pc_reg += skip_amount
         }
     }
 
-    fn set_vx_vy_instruction(&mut self, source_register : u16, destination_register : u16) {
-        self.general_purpose_registers[destination_register as usize] = self.general_purpose_registers[source_register as usize];
+    /// this will 
+    fn set_vx_reg_instruction(&mut self, reg : usize, num : u8) {
+        self.general_regs[reg] = num
     }
 
-    fn bin_op_instruction(&mut self, source_register : u16, destination_register : u16, operation : BinaryOp) {
-        self.general_purpose_registers[destination_register as usize] = match operation {
-            BinaryOp::And => { self.general_purpose_registers[destination_register as usize] & self.general_purpose_registers[source_register as usize] }
-            BinaryOp::Or => { self.general_purpose_registers[destination_register as usize] | self.general_purpose_registers[source_register as usize] }
-            BinaryOp::Xor => { self.general_purpose_registers[destination_register as usize] ^ self.general_purpose_registers[source_register as usize] }
+    fn bin_op_vx_reg_instruction(&mut self, reg : usize, num : u8, op : BinaryOp) {
+        self.general_regs[reg] = match op {
+            BinaryOp::And => { self.general_regs[reg] & num }
+            BinaryOp::Or => { self.general_regs[reg] | num }
+            BinaryOp::Xor => { self.general_regs[reg] ^ num }
         };
+    }
+
+    fn add_reg_vx_instruction(&mut self, reg : usize, num : u8, carry : bool) {
+        // wrapping add will add and account for overflows
+        if carry {
+            match self.general_regs[reg].checked_add(num) {
+                Some(_number) => { self.vf_flag_reg = true }
+                _ => { self.vf_flag_reg = false }
+            }
+        }
+
+        self.general_regs[reg] = self.general_regs[reg].wrapping_add(num)
+    }
+
+    fn subtract_vx_reg_instruction(&mut self, reg : usize, num : u8, flipped : bool) {
+        self.vf_flag_reg = true;
+        self.general_regs[reg] = match flipped {
+            true => {
+                match num.checked_sub(self.general_regs[reg]) {
+                    Some(result) => { result }
+                    None => {
+                        self.vf_flag_reg = false;
+                        num.wrapping_sub(self.general_regs[reg])
+                    }
+                }
+            }
+            false => {
+                match self.general_regs[reg].checked_sub(num) {
+                    Some(result) => { result }
+                    None => {
+                        self.vf_flag_reg = false;
+                        self.general_regs[reg].wrapping_sub(num)
+                    }
+                }
+            }
+        }
+    }
+
+    fn shift_vx_register(&mut self, reg : usize, right_shift : bool) {
+
     }
 }
