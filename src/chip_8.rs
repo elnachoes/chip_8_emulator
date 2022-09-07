@@ -1,4 +1,3 @@
-// blog used : https://tobiasvl.github.io/blog/write-a-chip-8-emulator/
 use rand::{Rng, thread_rng, rngs::ThreadRng};
 use std::{
     fs::File,
@@ -7,12 +6,7 @@ use std::{
     thread,
     time,
 };
-
-pub enum BinaryOp {
-    Or,
-    And,
-    Xor,
-}
+use crate::BinaryOp;
 
 pub struct Chip8 {
     // memory for the chip8 should be 4k
@@ -71,8 +65,7 @@ impl Chip8 {
         }
     }
 
-    //TODO : ADD ERROR HANDLING
-    pub fn load_rom(&mut self, file_path : &String) {
+    pub fn load_rom_from_radix(&mut self, file_path : &String) {
         const OPERAND_BITMASK : u16 = 0x00FF;
 
         let file_open_result = File::open(file_path);
@@ -102,7 +95,6 @@ impl Chip8 {
             self.memory[index as usize] = (instruction >> 8) as u8; 
             self.memory[index as usize + 1] = (instruction & OPERAND_BITMASK) as u8; 
             index += 2;
-            print!("")
         }
     }
 
@@ -120,11 +112,10 @@ impl Chip8 {
             if self.pc_reg as usize > Self::PROGRAM_MEMORY_SIZE - 1 { break }
 
             // decode and execute will both read the contents of the instruction and then execute the instruction afterwards
-            
             let instruction = self.fetch();
-            
+
             self.decode_and_execute(instruction);
-            
+
             // if there was a jump (or later on probably a call) dont increment the program counter
             if !self.jumped_flag_reg {
                 self.pc_reg += 2;
@@ -153,6 +144,7 @@ impl Chip8 {
         const XFFF_BITMASK : u16 = 0x0FFF;
         const XFXX_BITMASK : u16 = 0x0F00;
         const XXFF_BITMASK : u16 = 0x00FF;
+        const XXFX_BITMASK : u16 = 0x00F0;
 
         match instruction {
             // 0x00E0 (clear screen) 
@@ -168,11 +160,13 @@ impl Chip8 {
             // 0x6XNN(set register VX)
             i if i & FXXX_BITMASK == 0x6000 => {
                 //
-                let reg = (i & XFXX_BITMASK) >> 8;
-                let num = i & XXFF_BITMASK;
-                self.set_vx_reg_instruction(reg as usize, num as u8);
+                let reg = ((i & XFXX_BITMASK) >> 8) as usize;
+                let num = (i & XXFF_BITMASK) as u8;
+                self.set_vx_reg_instruction(reg, num);
             }
 
+            // ---- TODO MAKE SURE THIS COVERS ADD WITH CARRY ----
+            //
             // add value to register vx0
             i if i & FXXX_BITMASK == 0x7000 => {
                 //
@@ -188,7 +182,7 @@ impl Chip8 {
             }
             
             // draw/display 
-            //TODO FIX THIS
+            //TODO IMPLEMENT DRAW DISPLAY
             i if i & FXXX_BITMASK == 0xD000 => self.draw_display_instruction(),
 
             // TODO return
@@ -201,24 +195,34 @@ impl Chip8 {
             }
 
             // TODO skip if vx is equal to nn
+            // for instructions : 3XNN 4XNN 5XY0 9XY0
             i if i & FXXX_BITMASK == 0x3000 || 
                  i & FXXX_BITMASK == 0x4000 || 
                  i & FXXX_BITMASK == 0x5000 || 
                  i & FXXX_BITMASK == 0x9000 => {
-                let reg = (i & XFXX_BITMASK) >> 8;
-                let num = i & XXFF_BITMASK;
+                
+                // the first reg value in the instruction will be the value of the register with the index of the 2nd nybble in the instruction
+                let first_reg_value = self.general_regs[((i & XFXX_BITMASK) >> 8) as usize];
+                
+                // the second reg value in the instruction will be the value of the register with the index of the 3rd nybble in the instruction
+                let second_reg_value = self.general_regs[((i & XXFX_BITMASK) >> 4) as usize] as u8;
+
+                // the number to compare the first register too will be the last 2 nybbles in the instruction
+                let num = (i & XXFF_BITMASK) as u8;
 
                 // these instructions are almost all the same and have one function for them
                 // the first item in each tuple returned here is the skip amount
                 // the second item in each tuple is weather the skip should occur if the reg and number are the same or not
-                let instruction_info = match i & FXXX_BITMASK {
-                    0x3000 => (2, true),
-                    0x4000 => (2, false),
-                    0x5000 => (4, true),
-                    _ => (4, false)
+                match i & FXXX_BITMASK {
+                    0x3000 => self.skipif_vx_reg_nn_instruction(first_reg_value, num, true),
+                    0x4000 => self.skipif_vx_reg_nn_instruction(first_reg_value, num, false),
+                    0x5000 => self.skipif_vx_reg_nn_instruction(first_reg_value, second_reg_value, true),
+                    _ => self.skipif_vx_reg_nn_instruction(first_reg_value, second_reg_value, false),
                 };
+            }
 
-                self.skipif_vx_reg_nn_instruction(self.general_regs[reg as usize] as u8, num as u8, instruction_info.0, instruction_info.1)
+            i if i & FXXX_BITMASK == 0x8000 => {
+                
             }
 
             _ => {}
@@ -226,24 +230,47 @@ impl Chip8 {
     }
 
     /// this will set every byte storing info for the display to off
+    /// 
+    /// in decoder
+    /// 
+    /// for instructions : 00E0
     pub fn clear_display_instruction(&mut self) {
         self.display = vec![vec![false; Self::SCREEN_WIDTH]; Self::SCREEN_HEIGHT];
     }
 
     /// this will just set the program counter to a specific location in program memory of NNN
+    /// 
+    /// in decoder
+    /// 
+    /// for instructions : 1NNN
     pub fn jump_instruction(&mut self, location : u16) {
         self.pc_reg = location;
         self.jumped_flag_reg = true
     }
 
+    /// this sets the index register to a specific number
+    /// 
+    /// in decoder
+    /// 
+    /// for instructions : ANNN
     pub fn set_index_reg_instruction(&mut self, num : u16) {
         self.index_reg = num;
     }
 
+    /// 
+    /// 
+    /// in decoder
+    /// 
+    /// for instructions : DXYN
     pub fn draw_display_instruction(&self) {
         // TODO : implement this later but i would update it to draw to an actual window
     }
 
+    ///
+    /// 
+    /// in decoder
+    /// 
+    /// for instructions : EE00
     pub fn return_instruction(&mut self) {
         let return_address = self.stack.pop();
         if let None = return_address {
@@ -253,6 +280,11 @@ impl Chip8 {
         self.jumped_flag_reg = true;
     }
 
+    /// 
+    /// 
+    /// in decoder
+    /// 
+    /// for instructions : 2NNN 
     pub fn call_instruction(&mut self, location : u16) {
         // + 2 to make sure that it executes the NEXT instruction once a return is hit
         self.stack.push(self.pc_reg + 2);
@@ -260,96 +292,111 @@ impl Chip8 {
         self.jumped_flag_reg = true
     }
 
-    pub fn skipif_vx_reg_nn_instruction(&mut self, reg_val : u8, num : u8, skip_amount : u16, equality : bool) {
-        // this is a tricky way to have one instruction do 4 instructions
+    /// 
+    /// 
+    /// in decoder
+    /// 
+    /// for instructions : 3XNN 4XNN 5XY0 9XY0
+    pub fn skipif_vx_reg_nn_instruction(&mut self, reg_val : u8, num : u8, equality : bool) {
+        // this is a tricky way to have one function handle 4 instructions
         // if you have the register equal to the number and you do want them to be equal equality will be true and this is true
         // if they are not equal and you do not want them to be equal this will go through
         if !((reg_val == num) ^ equality) {
-            self.pc_reg += skip_amount
+            self.pc_reg += 2
         }
     }
 
+    ///
+    /// 
+    /// in decoder
+    /// 
+    /// for instructions : 6XNN
     pub fn set_vx_reg_instruction(&mut self, reg : usize, num : u8) {
         self.general_regs[reg] = num
     }
 
-    // TODO test this
-    // TODO set up the decode to handle this one
+    /// 
+    /// 
+    /// NOT in decoder
+    /// 
+    /// for instructions : 8XY1 8XY2 8XY3
     pub fn bin_op_vx_reg_instruction(&mut self, reg : usize, num : u8, op : BinaryOp) {
         self.general_regs[reg] = match op {
-            BinaryOp::And => self.general_regs[reg] & num,
             BinaryOp::Or => self.general_regs[reg] | num,
+            BinaryOp::And => self.general_regs[reg] & num,
+            // this MIGHT be wrong check later (probably fine tho because I think there is only binary xor no logical)
             BinaryOp::Xor => self.general_regs[reg] ^ num,
         };
     }
 
-    // TODO retest this
+    ///
+    /// 
+    /// in decoder but NOT FOR 8xy4
+    /// 
+    /// for instructions : 8XY4 7XNN 
     pub fn add_reg_vx_instruction(&mut self, reg : usize, num : u8, carry : bool) {
         // wrapping add will add and account for overflows
         if carry {
             match self.general_regs[reg].checked_add(num) {
-                Some(_number) => self.vf_flag_reg = true,
-                _ => self.vf_flag_reg = false
+                Some(_number) => self.vf_flag_reg = false,
+                _ => self.vf_flag_reg = true
             }
         }
 
         self.general_regs[reg] = self.general_regs[reg].wrapping_add(num)
     }
 
-    // TODO test this
-    // TODO set up the decode to handle this one
+    ///
+    /// 
+    /// for instructions : 8XY5 8XY7
     pub fn subtract_vx_reg_instruction(&mut self, reg : usize, num : u8, flipped : bool) {
         self.vf_flag_reg = true;
-        self.general_regs[reg] = match flipped {
-            true => {
-                match num.checked_sub(self.general_regs[reg]) {
-                    Some(result) => result,
-                    None => {
-                        self.vf_flag_reg = false;
-                        num.wrapping_sub(self.general_regs[reg])
-                    }
+        self.general_regs[reg] = if flipped {
+            match num.checked_sub(self.general_regs[reg]) {
+                Some(result) => result,
+                None => {
+                    self.vf_flag_reg = false;
+                    num.wrapping_sub(self.general_regs[reg])
                 }
             }
-            false => {
-                match self.general_regs[reg].checked_sub(num) {
-                    Some(result) => result, 
-                    None => {
-                        self.vf_flag_reg = false;
-                        self.general_regs[reg].wrapping_sub(num)
-                    }
+        } else {
+            match self.general_regs[reg].checked_sub(num) {
+                Some(result) => result, 
+                None => {
+                    self.vf_flag_reg = false;
+                    self.general_regs[reg].wrapping_sub(num)
                 }
             }
         }
     }
 
-    // works
-    // TODO set up the decode to handle this one
+    ///
+    /// 
+    /// for instructions : 8XY6 8XYE
     pub fn shift_vx_register(&mut self, reg : usize, right_shift : bool) {
         const LEFTMOST_BITMASK : u8 = 0x80;
         const RIGHTMOST_BITMASK : u8 = 0x01;
-        self.general_regs[reg] = match right_shift {
-            true => {
-                self.vf_flag_reg = (self.general_regs[reg] & RIGHTMOST_BITMASK) != 0; 
-                self.general_regs[reg] >> 1
-
-            }
-            false => { 
-                self.vf_flag_reg = (self.general_regs[reg] & LEFTMOST_BITMASK) != 0; 
-                self.general_regs[reg] << 1
-            }
+        self.general_regs[reg] = if right_shift {
+            self.vf_flag_reg = (self.general_regs[reg] & RIGHTMOST_BITMASK) != 0; 
+            self.general_regs[reg] >> 1
+        } else {
+            self.vf_flag_reg = (self.general_regs[reg] & LEFTMOST_BITMASK) != 0; 
+            self.general_regs[reg] << 1
         }
     }
 
-    // works
-    // TODO set up the decode to handle this one
+    ///
+    /// 
+    /// for instructions : BNNN
     pub fn jump_with_offset_instruction(&mut self, reg : usize, num : u16) {
         self.pc_reg += num;
         self.pc_reg += self.general_regs[reg] as u16; 
         self.jumped_flag_reg = true;
     }
 
-    // works
-    // TODO set up the decode to handle this one
+    ///
+    /// 
+    /// for instructions : CXNN
     pub fn random_instruction(&mut self, reg : usize, num : u8) {
         self.general_regs[reg] = self.rng.gen_range(0..u8::MAX) & num;
     }

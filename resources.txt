@@ -1,0 +1,5 @@
+//opengl interactivity
+https://dev.to/samkevich/learn-opengl-with-rust-creating-a-window-1792
+
+//chip8 emulator article
+blog used : https://tobiasvl.github.io/blog/write-a-chip-8-emulator/
