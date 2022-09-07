@@ -15,6 +15,7 @@
     0x00EE : return from subroutine 
     0x2NNN : call subroutine
     0x1NNN : jump pc to nnn
+    0xBXNN : jump with offset
 
     // skips
     0x3XNN : skip if reg VX == NN
@@ -22,24 +23,27 @@
     0x5XY0 : skip if reg VX == reg VY
     0x9XY0 : skip if reg VX != reg VY
 
-
--instructions to put in decoder BUT HAVE FUNCS
-
+    // binary ops
     0x8XY1 : binary or
     0x8XY2 : binary and
     0x8XY3 : binary xor
 
+    // add  
     0x8XY4 : add with carry
 
+    // subtract
     0x8XY5 : subtract with carry
     0x8XY7 : subtract with carry backwards 
 
+    // shifts
     0x8XY6 : shift one bit to the right 
     0x8XYE : shift one bit to the left
 
-    0xBNNN : jump with offset
-
+    // random
     0xCXNN : random
+
+-instructions to put in decoder BUT HAVE FUNCS
+
 
 
 -instructions to implement functions for and put in the decoder

@@ -145,6 +145,7 @@ impl Chip8 {
         const XFXX_BITMASK : u16 = 0x0F00;
         const XXFF_BITMASK : u16 = 0x00FF;
         const XXFX_BITMASK : u16 = 0x00F0;
+        const XXXF_BITMASK : u16 = 0x000F;
 
         match instruction {
             // 0x00E0 (clear screen) 
@@ -217,12 +218,44 @@ impl Chip8 {
                     0x3000 => self.skipif_vx_reg_nn_instruction(first_reg_value, num, true),
                     0x4000 => self.skipif_vx_reg_nn_instruction(first_reg_value, num, false),
                     0x5000 => self.skipif_vx_reg_nn_instruction(first_reg_value, second_reg_value, true),
-                    _ => self.skipif_vx_reg_nn_instruction(first_reg_value, second_reg_value, false),
+                    0x9000 => self.skipif_vx_reg_nn_instruction(first_reg_value, second_reg_value, false),
+                    _ => {}
                 };
             }
 
             i if i & FXXX_BITMASK == 0x8000 => {
-                
+                let reg = ((i & XFXX_BITMASK) >> 8) as usize;
+                let num = self.general_regs[((i & XXFX_BITMASK) >> 4) as usize];
+
+                match i & XXXF_BITMASK {
+                    // binary operation instructions
+                    0x0001 => self.bin_op_vx_reg_instruction(reg, num, BinaryOp::Or),
+                    0x0002 => self.bin_op_vx_reg_instruction(reg, num, BinaryOp::And),
+                    0x0003 => self.bin_op_vx_reg_instruction(reg, num, BinaryOp::Xor),
+                    // add with carry
+                    0x0004 => self.add_reg_vx_instruction(reg, num, true),
+                    // subtract with carry
+                    0x0005 => self.subtract_vx_reg_instruction(reg, num, false),
+                    // right shift instruction
+                    0x0006 => self.shift_vx_register(reg, true),
+                    // subtract with carry backwards
+                    0x0007 => self.subtract_vx_reg_instruction(reg, num, true),
+                    // left shift instruction
+                    0x000E => self.shift_vx_register(reg, false),
+                    _ => {}
+                }
+            }
+
+            i if i & FXXX_BITMASK == 0xB000 => {
+                let reg = ((i & XFXX_BITMASK) >> 8) as usize;
+                let offset = i & XXFF_BITMASK;
+                self.jump_with_offset_instruction(reg, offset)
+            }
+
+            i if i & FXXX_BITMASK == 0xC000 => {
+                let reg = ((i & XFXX_BITMASK) >> 8) as usize;
+                let num = (i & XXFF_BITMASK) as u8;
+                self.random_instruction(reg, num);
             }
 
             _ => {}
@@ -387,9 +420,9 @@ impl Chip8 {
 
     ///
     /// 
-    /// for instructions : BNNN
-    pub fn jump_with_offset_instruction(&mut self, reg : usize, num : u16) {
-        self.pc_reg += num;
+    /// for instructions : BXNN
+    pub fn jump_with_offset_instruction(&mut self, reg : usize, offset : u16) {
+        self.pc_reg += offset;
         self.pc_reg += self.general_regs[reg] as u16; 
         self.jumped_flag_reg = true;
     }
