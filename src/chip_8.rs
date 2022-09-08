@@ -48,6 +48,18 @@ impl Chip8 {
     const PROGRAM_MEMORY_SIZE : usize = 4096;
     const CLOCK_SLEEP_TIME_SECONDS : f64 = 1.0 / 700.0;
 
+    // 16bit bitmasks
+    const FXXX_BITMASK : u16 = 0xF000;
+    const XFXX_BITMASK : u16 = 0x0F00;
+    const XXFX_BITMASK : u16 = 0x00F0;
+    const XXXF_BITMASK : u16 = 0x000F;
+    const XFFF_BITMASK : u16 = 0x0FFF;
+    const XXFF_BITMASK : u16 = 0x00FF;
+
+    // 8bit bitmasks
+    const LEFTMOST_BITMASK : u8 = 0x80;
+    const RIGHTMOST_BITMASK : u8 = 0x01;
+
     pub fn new() -> Chip8 {
         Chip8 {
             memory : vec![0; Self::PROGRAM_MEMORY_SIZE],
@@ -66,8 +78,6 @@ impl Chip8 {
     }
 
     pub fn load_rom_from_radix(&mut self, file_path : &String) {
-        const OPERAND_BITMASK : u16 = 0x00FF;
-
         let file_open_result = File::open(file_path);
 
         let file_handle = match file_open_result {
@@ -93,7 +103,7 @@ impl Chip8 {
             };
 
             self.memory[index as usize] = (instruction >> 8) as u8; 
-            self.memory[index as usize + 1] = (instruction & OPERAND_BITMASK) as u8; 
+            self.memory[index as usize + 1] = (instruction & Self::XXFF_BITMASK) as u8; 
             index += 2;
         }
     }
@@ -140,81 +150,74 @@ impl Chip8 {
     /// 
     /// if the instruction does not match anything in the specified instruction list then it will act as a NOP
     pub fn decode_and_execute(&mut self, instruction : u16) {
-        const FXXX_BITMASK : u16 = 0xF000;
-        const XFFF_BITMASK : u16 = 0x0FFF;
-        const XFXX_BITMASK : u16 = 0x0F00;
-        const XXFF_BITMASK : u16 = 0x00FF;
-        const XXFX_BITMASK : u16 = 0x00F0;
-        const XXXF_BITMASK : u16 = 0x000F;
-
         match instruction {
             // 0x00E0 (clear screen) 
             0x00E0 => self.clear_display_instruction(),
 
             // 0x1NNN (jumps the program counter to a specific location)
-            i if i & FXXX_BITMASK == 0x1000 => {
+            i if i & Self::FXXX_BITMASK == 0x1000 => {
                 // call the jump instruction with NNN from 1NNN to tell the program counter where to jump
-                let location = i & XFFF_BITMASK;
+                let location = i & Self::XFFF_BITMASK;
                 self.jump_instruction(location)
             }
 
             // 0x6XNN(set register VX)
-            i if i & FXXX_BITMASK == 0x6000 => {
+            i if i & Self::FXXX_BITMASK == 0x6000 => {
                 //
-                let reg = ((i & XFXX_BITMASK) >> 8) as usize;
-                let num = (i & XXFF_BITMASK) as u8;
+                let reg = ((i & Self::XFXX_BITMASK) >> 8) as usize;
+                let num = (i & Self::XXFF_BITMASK) as u8;
                 self.set_vx_reg_instruction(reg, num);
             }
 
             // ---- TODO MAKE SURE THIS COVERS ADD WITH CARRY ----
             //
             // add value to register vx0
-            i if i & FXXX_BITMASK == 0x7000 => {
+            i if i & Self::FXXX_BITMASK == 0x7000 => {
                 //
-                let reg = (i & XFXX_BITMASK) >> 8;
-                let num = i & XXFF_BITMASK;
+                let reg = (i & Self::XFXX_BITMASK) >> 8;
+                let num = i & Self::XXFF_BITMASK;
                 self.add_reg_vx_instruction(reg as usize, num as u8, false);
             }
 
             // set index register i
-            i if i & FXXX_BITMASK == 0xA000 => {
-                let number = i & XFFF_BITMASK;
+            i if i & Self::FXXX_BITMASK == 0xA000 => {
+                let number = i & Self::XFFF_BITMASK;
                 self.set_index_reg_instruction(number)
             }
             
             // draw/display 
             //TODO IMPLEMENT DRAW DISPLAY
-            i if i & FXXX_BITMASK == 0xD000 => self.draw_display_instruction(),
+            i if i & Self::FXXX_BITMASK == 0xD000 => self.draw_display_instruction(),
 
             // TODO return
             0x00EE => self.return_instruction(),
 
             // TODO call
-            i if i & FXXX_BITMASK == 0x2000 => { 
-                let location = i & XFFF_BITMASK;
+            i if i & Self::FXXX_BITMASK == 0x2000 => { 
+                let location = i & Self::XFFF_BITMASK;
                 self.call_instruction(location);
             }
 
             // TODO skip if vx is equal to nn
             // for instructions : 3XNN 4XNN 5XY0 9XY0
-            i if i & FXXX_BITMASK == 0x3000 || 
-                 i & FXXX_BITMASK == 0x4000 || 
-                 i & FXXX_BITMASK == 0x5000 || 
-                 i & FXXX_BITMASK == 0x9000 => {
+            i if i & Self::FXXX_BITMASK == 0x3000 || 
+                 i & Self::FXXX_BITMASK == 0x4000 || 
+                 i & Self::FXXX_BITMASK == 0x5000 || 
+                 i & Self::FXXX_BITMASK == 0x9000 => {
                 
                 // the first reg value in the instruction will be the value of the register with the index of the 2nd nybble in the instruction
-                let first_reg_value = self.general_regs[((i & XFXX_BITMASK) >> 8) as usize];
+                let first_reg_value = self.general_regs[((i & Self::XFXX_BITMASK) >> 8) as usize];
                 
                 // the second reg value in the instruction will be the value of the register with the index of the 3rd nybble in the instruction
-                let second_reg_value = self.general_regs[((i & XXFX_BITMASK) >> 4) as usize] as u8;
+                let second_reg_value = self.general_regs[((i & Self::XXFX_BITMASK) >> 4) as usize] as u8;
 
                 // the number to compare the first register too will be the last 2 nybbles in the instruction
-                let num = (i & XXFF_BITMASK) as u8;
+                let num = (i & Self::XXFF_BITMASK) as u8;
 
                 // these instructions are almost all the same and have one function for them
                 // the first item in each tuple returned here is the skip amount
                 // the second item in each tuple is weather the skip should occur if the reg and number are the same or not
-                match i & FXXX_BITMASK {
+                match i & Self::FXXX_BITMASK {
                     0x3000 => self.skipif_vx_reg_nn_instruction(first_reg_value, num, true),
                     0x4000 => self.skipif_vx_reg_nn_instruction(first_reg_value, num, false),
                     0x5000 => self.skipif_vx_reg_nn_instruction(first_reg_value, second_reg_value, true),
@@ -223,11 +226,11 @@ impl Chip8 {
                 };
             }
 
-            i if i & FXXX_BITMASK == 0x8000 => {
-                let reg = ((i & XFXX_BITMASK) >> 8) as usize;
-                let num = self.general_regs[((i & XXFX_BITMASK) >> 4) as usize];
+            i if i & Self::FXXX_BITMASK == 0x8000 => {
+                let reg = ((i & Self::XFXX_BITMASK) >> 8) as usize;
+                let num = self.general_regs[((i & Self::XXFX_BITMASK) >> 4) as usize];
 
-                match i & XXXF_BITMASK {
+                match i & Self::XXXF_BITMASK {
                     // binary operation instructions
                     0x0001 => self.bin_op_vx_reg_instruction(reg, num, BinaryOp::Or),
                     0x0002 => self.bin_op_vx_reg_instruction(reg, num, BinaryOp::And),
@@ -246,15 +249,15 @@ impl Chip8 {
                 }
             }
 
-            i if i & FXXX_BITMASK == 0xB000 => {
-                let reg = ((i & XFXX_BITMASK) >> 8) as usize;
-                let offset = i & XXFF_BITMASK;
+            i if i & Self::FXXX_BITMASK == 0xB000 => {
+                let reg = ((i & Self::XFXX_BITMASK) >> 8) as usize;
+                let offset = i & Self::XXFF_BITMASK;
                 self.jump_with_offset_instruction(reg, offset)
             }
 
-            i if i & FXXX_BITMASK == 0xC000 => {
-                let reg = ((i & XFXX_BITMASK) >> 8) as usize;
-                let num = (i & XXFF_BITMASK) as u8;
+            i if i & Self::FXXX_BITMASK == 0xC000 => {
+                let reg = ((i & Self::XFXX_BITMASK) >> 8) as usize;
+                let num = (i & Self::XXFF_BITMASK) as u8;
                 self.random_instruction(reg, num);
             }
 
@@ -407,13 +410,11 @@ impl Chip8 {
     /// 
     /// for instructions : 8XY6 8XYE
     pub fn shift_vx_register(&mut self, reg : usize, right_shift : bool) {
-        const LEFTMOST_BITMASK : u8 = 0x80;
-        const RIGHTMOST_BITMASK : u8 = 0x01;
         self.general_regs[reg] = if right_shift {
-            self.vf_flag_reg = (self.general_regs[reg] & RIGHTMOST_BITMASK) != 0; 
+            self.vf_flag_reg = (self.general_regs[reg] & Self::RIGHTMOST_BITMASK) != 0; 
             self.general_regs[reg] >> 1
         } else {
-            self.vf_flag_reg = (self.general_regs[reg] & LEFTMOST_BITMASK) != 0; 
+            self.vf_flag_reg = (self.general_regs[reg] & Self::LEFTMOST_BITMASK) != 0; 
             self.general_regs[reg] << 1
         }
     }
