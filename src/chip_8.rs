@@ -6,7 +6,7 @@ use std::{
     thread,
     time,
 };
-use crate::BinaryOp;
+use crate::{BinaryOp, Chip8Window};
 
 pub struct Chip8 {
     // memory for the chip8 should be 4k
@@ -16,7 +16,9 @@ pub struct Chip8 {
     
     // the display is monochrome so the bytes representing pixels can just be bools
     // the display size should be 32 by 64
-    pub display : Vec<Vec<bool>>,
+    pub display_buffer : Vec<Vec<bool>>,
+
+    pub window : Chip8Window,
 
     // the specs given don't say how many stack entries there should be but I put 16
     pub stack : Vec<u16>,
@@ -63,7 +65,8 @@ impl Chip8 {
     pub fn new() -> Chip8 {
         Chip8 {
             memory : vec![0; Self::PROGRAM_MEMORY_SIZE],
-            display : vec![vec![true; Self::SCREEN_WIDTH]; Self::SCREEN_HEIGHT],
+            display_buffer : vec![vec![false; Self::SCREEN_HEIGHT]; Self::SCREEN_WIDTH],
+            window : Chip8Window::new(),
             stack : Vec::new(),
             pc_reg : 0,
             index_reg : 0,
@@ -116,6 +119,10 @@ impl Chip8 {
     /// the loop will run at a fixed speed of 1mhz simulated
     pub fn start_processor_loop(&mut self) {
         loop {
+            // handle the input
+            // TODO this should return something
+            self.window.handle_input();
+
             let instruction_start_time = time::Instant::now();
 
             // if the program counter has run out of instructions break out of the processor loop
@@ -137,6 +144,9 @@ impl Chip8 {
             if operation_duration > 0.0 {
                 thread::sleep(time::Duration::from_secs_f64(operation_duration));
             }
+
+            //draw the window
+            self.window.draw_canvas(self.display_buffer.clone());
         }
     }
 
@@ -271,7 +281,7 @@ impl Chip8 {
     /// 
     /// for instructions : 00E0
     pub fn clear_display_instruction(&mut self) {
-        self.display = vec![vec![false; Self::SCREEN_WIDTH]; Self::SCREEN_HEIGHT];
+        self.display_buffer = vec![vec![false; Self::SCREEN_WIDTH]; Self::SCREEN_HEIGHT];
     }
 
     /// this will just set the program counter to a specific location in program memory of NNN
@@ -300,8 +310,25 @@ impl Chip8 {
     /// for instructions : DXYN
     pub fn draw_display_instruction(&self) {
         // TODO : implement this later but i would update it to draw to an actual window
+
+
+
     }
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+    
     ///
     /// 
     /// in decoder
