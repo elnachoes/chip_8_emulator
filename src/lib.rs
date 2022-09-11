@@ -6,3 +6,6 @@ pub use binary_op::BinaryOp;
 
 pub mod chip_8_window;
 pub use chip_8_window::Chip8Window;
+
+pub mod keyboard;
+pub use keyboard::Keyboard;

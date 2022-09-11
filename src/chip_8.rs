@@ -1,4 +1,9 @@
-use rand::{Rng, thread_rng, rngs::ThreadRng};
+use rand::{
+    Rng, 
+    thread_rng, 
+    rngs::ThreadRng
+};
+
 use std::{
     fs::File,
     io::BufRead,
@@ -6,7 +11,12 @@ use std::{
     thread,
     time,
 };
-use crate::{BinaryOp, Chip8Window};
+
+use crate::{
+    BinaryOp, 
+    Chip8Window, 
+    Keyboard
+};
 
 pub struct Chip8 {
     // memory for the chip8 should be 4k
@@ -40,6 +50,8 @@ pub struct Chip8 {
 
     // 16 general purpose 8 bit registers 
     pub general_regs : Vec<u8>,
+
+    pub keyboard : Keyboard,
 
     pub rng : ThreadRng,
 }
@@ -76,6 +88,7 @@ impl Chip8 {
             jumped_flag_reg : false,
             carry_flag_register : false,
             general_regs : vec![0; 16],
+            keyboard : Keyboard::None,
             rng : thread_rng()
         }
     }
@@ -125,7 +138,7 @@ impl Chip8 {
         loop {
             // handle the input
             // TODO this should return something
-            self.window.handle_input();
+            self.keyboard = self.window.handle_input();
 
             let instruction_start_time = time::Instant::now();
 

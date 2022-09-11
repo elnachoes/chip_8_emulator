@@ -9,6 +9,8 @@ use sdl2::{
     keyboard::Keycode
 };
 
+use crate::Keyboard;
+
 static OFF_COLOR : Color = Color::RGB(255,255,255);
 static ON_COLOR : Color = Color::RGB(0,0,0);
 
@@ -66,16 +68,85 @@ impl Chip8Window {
     }
 
     // have this return a set of pressed keys back to the chip8
-    pub fn handle_input(&mut self) {
+    pub fn handle_input(&mut self) -> Keyboard {
+        let mut keyboard_state = Keyboard::None;
         for event in self.event_pump.poll_iter() {
             match event {
                 Event::Quit {..} |
                 Event::KeyDown { keycode: Some(Keycode::Escape), .. } => {
                     std::process::exit(0);
                 },
+
+                Event::KeyDown { keycode : Some(Keycode::Kp0), .. } => {
+                    keyboard_state = Keyboard::Key0
+                }
+                
+                Event::KeyDown { keycode : Some(Keycode::Kp1), .. } => {
+                    keyboard_state = Keyboard::Key1
+                }
+                
+                Event::KeyDown { keycode : Some(Keycode::Kp2), .. } => {
+                    keyboard_state = Keyboard::Key2
+                }
+                
+                Event::KeyDown { keycode : Some(Keycode::Kp3), .. } => {
+                    keyboard_state = Keyboard::Key3
+                }
+                
+                Event::KeyDown { keycode : Some(Keycode::Kp4), .. } => {
+                    keyboard_state = Keyboard::Key4
+                }
+                
+                Event::KeyDown { keycode : Some(Keycode::Kp5), .. } => {
+                    keyboard_state = Keyboard::Key5
+                }
+                
+                Event::KeyDown { keycode : Some(Keycode::Kp6), .. } => {
+                    keyboard_state = Keyboard::Key6
+                }
+                
+                Event::KeyDown { keycode : Some(Keycode::Kp7), .. } => {
+                    keyboard_state = Keyboard::Key7
+                }
+                
+                Event::KeyDown { keycode : Some(Keycode::Kp8), .. } => {
+                    keyboard_state = Keyboard::Key8
+                }
+                
+                Event::KeyDown { keycode : Some(Keycode::Kp9), .. } => {
+                    keyboard_state = Keyboard::Key9
+                }
+                
+                Event::KeyDown { keycode : Some(Keycode::KpPeriod), .. } => {
+                    keyboard_state = Keyboard::KeyA
+                }
+                
+                Event::KeyDown { keycode : Some(Keycode::KpEnter), .. } => {
+                    keyboard_state = Keyboard::KeyB
+                }
+
+                Event::KeyDown { keycode : Some(Keycode::KpPlus), .. } => {
+                    keyboard_state = Keyboard::KeyC
+                }
+                
+                Event::KeyDown { keycode : Some(Keycode::KpMinus), .. } => {
+                    keyboard_state = Keyboard::KeyD
+                    
+                }
+                
+                Event::KeyDown { keycode : Some(Keycode::KpMultiply), .. } => {
+                    keyboard_state = Keyboard::KeyE
+                    
+                }
+                
+                Event::KeyDown { keycode : Some(Keycode::KpDivide), .. } => {
+                    keyboard_state = Keyboard::KeyF
+                }
+
                 _ => {}
             }
         }
+        keyboard_state
     }
 
     pub fn draw_canvas(&mut self, buffer : Vec<Vec<bool>>) {
