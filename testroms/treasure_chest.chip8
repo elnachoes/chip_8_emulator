@@ -1,0 +1,65 @@
+;; set the index register to the sprite memory
+;; A sets the contents of the index register to nnn which is the next 3 nybbles
+;; 052 is the location of the sprite memory for the treasure chest
+A052
+
+;; increment the x and why coordinates of the chest
+;; 7 adds to regixter x
+;; the x and y coordinates are stored in registers 6 and 7 which is in the first and 3rd nybbles 
+;; hex 01 is being added to each register
+7601
+7701
+
+;; run a bunch of nops to slow the speed of the chest
+0000
+0000
+0000
+0000
+0000
+0000
+0000
+0000
+0000
+0000
+0000
+0000
+0000
+0000
+0000
+0000
+0000
+0000
+0000
+0000
+0000
+0000
+0000
+0000
+0000
+0000
+0000
+0000
+0000
+0000
+0000
+0000
+0000
+0000
+0000
+
+;; clear the screen before drawing the box
+00e0
+
+;; this will draw 9 rows of the sprite pointed at by the index register
+;; it will draw the sprite at locations x and y which are stored in the 2 registers used in the instruction (6 and 7 here)
+D679
+
+;; jump back to hex 2 in memory where the registers storing the x and y coordinates were being incremented
+1002
+
+;; this is the sprite memory for the treasure chest
+3c42
+819d
+f79d
+8181
+ff00

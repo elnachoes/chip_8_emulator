@@ -59,13 +59,19 @@ impl Chip8 {
     const XXFF_BITMASK : u16 = 0x00FF;
 
     // 8bit bitmasks
-    const LEFTMOST_BITMASK : u8 = 0x80;
-    const RIGHTMOST_BITMASK : u8 = 0x01;
+    const BIT1_BITMASK : u8 = 0b0000_0001;
+    const BIT2_BITMASK : u8 = 0b0000_0010;
+    const BIT3_BITMASK : u8 = 0b0000_0100;
+    const BIT4_BITMASK : u8 = 0b0000_1000;
+    const BIT5_BITMASK : u8 = 0b0001_0000;
+    const BIT6_BITMASK : u8 = 0b0010_0000;
+    const BIT7_BITMASK : u8 = 0b0100_0000;
+    const BIT8_BITMASK : u8 = 0b1000_0000;
 
     pub fn new() -> Chip8 {
         Chip8 {
             memory : vec![0; Self::PROGRAM_MEMORY_SIZE],
-            display_buffer : vec![vec![false; Self::SCREEN_HEIGHT]; Self::SCREEN_WIDTH],
+            display_buffer : vec![vec![false; Self::SCREEN_WIDTH]; Self::SCREEN_HEIGHT],
             window : Chip8Window::new(),
             stack : Vec::new(),
             pc_reg : 0,
@@ -90,12 +96,16 @@ impl Chip8 {
 
         let reader = BufReader::new(file_handle);
         let mut index = 0;
-        for (line_index, line) in reader.lines().enumerate() {
-            if line_index > Self::PROGRAM_MEMORY_SIZE - 1 {
+        for (_line_index, line) in reader.lines().enumerate() {
+            if index > Self::PROGRAM_MEMORY_SIZE - 1 {
                 panic!("error : your program is too large! 4096 bytes of program memory maximum")
             }
 
             let line = line.unwrap();
+
+            if line.starts_with(";;") || line.is_empty() {
+                continue
+            }
 
             // figure out why this has to be 16 in the second arg
             let instruction_result = u16::from_str_radix(&line, 16);
@@ -197,7 +207,12 @@ impl Chip8 {
             
             // draw/display 
             //TODO IMPLEMENT DRAW DISPLAY
-            i if i & Self::FXXX_BITMASK == 0xD000 => self.draw_display_instruction(),
+            i if i & Self::FXXX_BITMASK == 0xD000 => {
+                let x_coordinate = self.general_regs[((i & Self::XFXX_BITMASK) >> 8) as usize];
+                let y_coordinate = self.general_regs[((i & Self::XXFX_BITMASK) >> 4) as usize];
+                let sprite_height = (i & Self::XXXF_BITMASK) as u8;
+                self.draw_display_instruction(x_coordinate, y_coordinate, sprite_height);
+            },
 
             // TODO return
             0x00EE => self.return_instruction(),
@@ -308,26 +323,58 @@ impl Chip8 {
     /// in decoder
     /// 
     /// for instructions : DXYN
-    pub fn draw_display_instruction(&self) {
-        // TODO : implement this later but i would update it to draw to an actual window
+    pub fn draw_display_instruction(&mut self, x_coordinate : u8, y_coordinate : u8, sprite_height : u8) {
 
+        // make sure that x coordinate is not running off the side of the screen
+        let x_coordinate = x_coordinate % Self::SCREEN_WIDTH as u8;
+        let y_coordinate = y_coordinate % Self::SCREEN_HEIGHT as u8;
 
+        // this is the outer loop for the rows of the sprite
+        'rows : for y_offset in 0..sprite_height {
+            let sprite_row = self.memory[(self.index_reg + y_offset as u16) as usize];
 
+            // because the rows are drawn on a display buffer that has the largest number to the right of the screen,
+            // and the bytes are stored with the largest bits to the left (big endian),
+            // this iterator needs to move in reverse for moving through the sprite row and move foward for translating to the display
+            // TODO : look into double ended iterators to make this a bit cleaner
+            let mut sprite_slice_iter = 0..8;
+            
+            // this is the loop for the individual columns 
+            'columns : for shift_amount in sprite_slice_iter.clone().rev() {
+
+                // this gets the individual bit for a given column in the sprite row
+                let bit = (sprite_row >> shift_amount) & Self::BIT1_BITMASK;
+                
+                // the x offset should be the next item in the sprite slice iter 
+                let x_offset = sprite_slice_iter.next().unwrap();
+
+                // add the offsets to the x and y coordinates
+                let x_coordinate = x_coordinate + x_offset;
+                let y_coordinate = y_coordinate + y_offset;
+                
+                // if the x coordinate is greater than or equal to the screen width stop drawing the current column
+                if x_coordinate >= Self::SCREEN_WIDTH as u8 {
+                    break 'columns;
+                
+                // if the y coordinate is greater than or equal to the screen height stop drawing the whole sprite
+                } else if y_coordinate >= Self::SCREEN_HEIGHT as u8 {
+                    break 'rows;
+                
+                // if the bit is true, check if there was a pixel already shaded on that position in the display buffer
+                // if there was a pixel already shaded on that position then set the shade to false and the vf flag reg to true
+                // else shade that pixel
+                } else if bit != 0 {
+                    self.vf_flag_reg = false;
+                    if self.display_buffer[(y_coordinate) as usize][(x_coordinate) as usize] {
+                        self.vf_flag_reg = true;
+                        self.display_buffer[(y_coordinate) as usize][(x_coordinate) as usize] = false;
+                    } else {
+                        self.display_buffer[(y_coordinate) as usize][(x_coordinate) as usize] = true;
+                    }
+                }
+            }
+        }
     }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
     
     ///
     /// 
@@ -438,10 +485,10 @@ impl Chip8 {
     /// for instructions : 8XY6 8XYE
     pub fn shift_vx_register(&mut self, reg : usize, right_shift : bool) {
         self.general_regs[reg] = if right_shift {
-            self.vf_flag_reg = (self.general_regs[reg] & Self::RIGHTMOST_BITMASK) != 0; 
+            self.vf_flag_reg = (self.general_regs[reg] & Self::BIT1_BITMASK) != 0; 
             self.general_regs[reg] >> 1
         } else {
-            self.vf_flag_reg = (self.general_regs[reg] & Self::LEFTMOST_BITMASK) != 0; 
+            self.vf_flag_reg = (self.general_regs[reg] & Self::BIT8_BITMASK) != 0; 
             self.general_regs[reg] << 1
         }
     }
