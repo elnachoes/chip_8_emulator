@@ -1,4 +1,4 @@
-use chip_8_emulator::{Chip8, BinaryOp, OldChip8Window};
+use chip_8_emulator::{Chip8};
 
 fn main() {
     let mut x = Chip8::new();

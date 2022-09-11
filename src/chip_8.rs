@@ -60,12 +60,6 @@ impl Chip8 {
 
     // 8bit bitmasks
     const BIT1_BITMASK : u8 = 0b0000_0001;
-    const BIT2_BITMASK : u8 = 0b0000_0010;
-    const BIT3_BITMASK : u8 = 0b0000_0100;
-    const BIT4_BITMASK : u8 = 0b0000_1000;
-    const BIT5_BITMASK : u8 = 0b0001_0000;
-    const BIT6_BITMASK : u8 = 0b0010_0000;
-    const BIT7_BITMASK : u8 = 0b0100_0000;
     const BIT8_BITMASK : u8 = 0b1000_0000;
 
     pub fn new() -> Chip8 {
