@@ -17,6 +17,8 @@ pub struct Chip8Window {
     pub video_subsystem : VideoSubsystem,
     pub canvas : WindowCanvas,
     pub event_pump : EventPump,
+    pub off_color : Color,
+    pub on_color : Color,
 }
 
 impl Chip8Window {
@@ -44,6 +46,22 @@ impl Chip8Window {
             video_subsystem : video_subsystem,
             canvas : canvas,
             event_pump : event_pump,
+            off_color : OFF_COLOR,
+            on_color : ON_COLOR,
+        }
+    }
+
+    pub fn invert_colors(&mut self) {
+        self.off_color = if self.off_color == OFF_COLOR {
+            ON_COLOR
+        } else {
+            OFF_COLOR
+        };
+
+        self.on_color = if self.on_color == OFF_COLOR {
+            ON_COLOR
+        } else {
+            OFF_COLOR
         }
     }
 
@@ -61,10 +79,10 @@ impl Chip8Window {
     }
 
     pub fn draw_canvas(&mut self, buffer : Vec<Vec<bool>>) {
-        self.canvas.set_draw_color(OFF_COLOR);
+        self.canvas.set_draw_color(self.off_color);
         self.canvas.clear();
         
-        self.canvas.set_draw_color(ON_COLOR);
+        self.canvas.set_draw_color(self.on_color);
         
         let mut vertical_position : usize = 0;
         for i in buffer.iter() {

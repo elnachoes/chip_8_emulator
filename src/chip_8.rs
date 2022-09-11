@@ -284,6 +284,10 @@ impl Chip8 {
         }
     }
 
+    pub fn invert_colors(&mut self) {
+        self.window.invert_colors();
+    }
+
     /// this will set every byte storing info for the display to off
     /// 
     /// in decoder
