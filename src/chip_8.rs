@@ -136,8 +136,6 @@ impl Chip8 {
     /// the loop will run at a fixed speed of 1mhz simulated
     pub fn start_processor_loop(&mut self) {
         loop {
-            // handle the input
-            // TODO this should return something
             self.keyboard = self.window.handle_input();
 
             let instruction_start_time = time::Instant::now();
@@ -179,7 +177,7 @@ impl Chip8 {
     pub fn decode_and_execute(&mut self, instruction : u16) {
         match instruction {
             // 0x00E0 (clear screen) 
-            0x00E0 => self.clear_display_instruction(),
+            0x00e0 => self.clear_display_instruction(),
 
             // 0x1NNN (jumps the program counter to a specific location)
             i if i & Self::FXXX_BITMASK == 0x1000 => {
@@ -207,14 +205,14 @@ impl Chip8 {
             }
 
             // set index register i
-            i if i & Self::FXXX_BITMASK == 0xA000 => {
+            i if i & Self::FXXX_BITMASK == 0xa000 => {
                 let number = i & Self::XFFF_BITMASK;
                 self.set_index_reg_instruction(number)
             }
             
             // draw/display 
             //TODO IMPLEMENT DRAW DISPLAY
-            i if i & Self::FXXX_BITMASK == 0xD000 => {
+            i if i & Self::FXXX_BITMASK == 0xd000 => {
                 let x_coordinate = self.general_regs[((i & Self::XFXX_BITMASK) >> 8) as usize];
                 let y_coordinate = self.general_regs[((i & Self::XXFX_BITMASK) >> 4) as usize];
                 let sprite_height = (i & Self::XXXF_BITMASK) as u8;
@@ -222,7 +220,7 @@ impl Chip8 {
             },
 
             // TODO return
-            0x00EE => self.return_instruction(),
+            0x00ee => self.return_instruction(),
 
             // TODO call
             i if i & Self::FXXX_BITMASK == 0x2000 => { 
@@ -235,13 +233,17 @@ impl Chip8 {
             i if i & Self::FXXX_BITMASK == 0x3000 || 
                  i & Self::FXXX_BITMASK == 0x4000 || 
                  i & Self::FXXX_BITMASK == 0x5000 || 
-                 i & Self::FXXX_BITMASK == 0x9000 => {
+                 i & Self::FXXX_BITMASK == 0x9000 || 
+                 i & Self::FXXX_BITMASK == 0xe000 => {
                 
                 // the first reg value in the instruction will be the value of the register with the index of the 2nd nybble in the instruction
                 let first_reg_value = self.general_regs[((i & Self::XFXX_BITMASK) >> 8) as usize];
                 
                 // the second reg value in the instruction will be the value of the register with the index of the 3rd nybble in the instruction
                 let second_reg_value = self.general_regs[((i & Self::XXFX_BITMASK) >> 4) as usize] as u8;
+
+                // keyboard keycode
+                let key_code = self.keyboard.get_keycode();
 
                 // the number to compare the first register too will be the last 2 nybbles in the instruction
                 let num = (i & Self::XXFF_BITMASK) as u8;
@@ -254,6 +256,14 @@ impl Chip8 {
                     0x4000 => self.skipif_vx_reg_nn_instruction(first_reg_value, num, false),
                     0x5000 => self.skipif_vx_reg_nn_instruction(first_reg_value, second_reg_value, true),
                     0x9000 => self.skipif_vx_reg_nn_instruction(first_reg_value, second_reg_value, false),
+
+                    // TODO FIX THIS SOMETHING IS WRONG HERE
+                    j if j == 0xe000 && key_code != None => match instruction & Self::XXFF_BITMASK {
+                        0x009e => self.skipif_vx_reg_nn_instruction(first_reg_value, key_code.unwrap(), true),
+                        0x00a1 => self.skipif_vx_reg_nn_instruction(first_reg_value, key_code.unwrap(), false),
+                        _ => {}
+                    },
+
                     _ => {}
                 };
             }
@@ -276,18 +286,18 @@ impl Chip8 {
                     // subtract with carry backwards
                     0x0007 => self.subtract_vx_reg_instruction(reg, num, true),
                     // left shift instruction
-                    0x000E => self.shift_vx_register(reg, false),
+                    0x000e => self.shift_vx_register(reg, false),
                     _ => {}
                 }
             }
 
-            i if i & Self::FXXX_BITMASK == 0xB000 => {
+            i if i & Self::FXXX_BITMASK == 0xb000 => {
                 let reg = ((i & Self::XFXX_BITMASK) >> 8) as usize;
                 let offset = i & Self::XXFF_BITMASK;
                 self.jump_with_offset_instruction(reg, offset)
             }
 
-            i if i & Self::FXXX_BITMASK == 0xC000 => {
+            i if i & Self::FXXX_BITMASK == 0xc000 => {
                 let reg = ((i & Self::XFXX_BITMASK) >> 8) as usize;
                 let num = (i & Self::XXFF_BITMASK) as u8;
                 self.random_instruction(reg, num);
@@ -422,7 +432,7 @@ impl Chip8 {
         // this is a tricky way to have one function handle 4 instructions
         // if you have the register equal to the number and you do want them to be equal equality will be true and this is true
         // if they are not equal and you do not want them to be equal this will go through
-        if !((reg_val == num) ^ equality) {
+        if (reg_val == num) == equality {
             self.pc_reg += 2
         }
     }
