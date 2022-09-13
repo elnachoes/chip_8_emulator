@@ -1,0 +1,9 @@
+;; registers to set the font location 
+600c
+6105
+
+;; put the font location here
+f029
+
+;; draw the font char
+d015

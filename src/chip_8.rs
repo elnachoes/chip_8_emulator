@@ -9,13 +9,14 @@ use std::{
     io::BufRead,
     io::BufReader,
     thread,
-    time,
+    time, vec,
 };
 
 use crate::{
     BinaryOp, 
     Chip8Window, 
-    Keyboard
+    Keyboard,
+    Font
 };
 
 pub struct Chip8 {
@@ -54,6 +55,8 @@ pub struct Chip8 {
     pub keyboard : Keyboard,
 
     pub rng : ThreadRng,
+
+    pub font : Font,
 }
 
 impl Chip8 {
@@ -89,20 +92,27 @@ impl Chip8 {
             carry_flag_register : false,
             general_regs : vec![0; 16],
             keyboard : Keyboard::None,
-            rng : thread_rng()
+            rng : thread_rng(),
+            font : Font::new_standard()
         }
     }
 
-    pub fn load_rom_from_radix(&mut self, file_path : &String) {
+    ///  this fn will load a rom at location 512 in memory to allow for font and sprite space at the beggining of memory
+    ///
+    /// TODO : make a more standard assembler later or find a better one and mod it
+    pub fn load_rom_from_radix_at_512(&mut self, file_path : &String) {
         let file_open_result = File::open(file_path);
 
         let file_handle = match file_open_result {
             Ok(file) => { file } 
             _ => { panic!("error : could not load file at specified path!") } 
         };
-
+        
+        // the rom will be loaded and started at location 512
+        let mut index = 512;
+        self.pc_reg = 512;
+        
         let reader = BufReader::new(file_handle);
-        let mut index = 0;
         for (_line_index, line) in reader.lines().enumerate() {
             if index > Self::PROGRAM_MEMORY_SIZE - 1 {
                 panic!("error : your program is too large! 4096 bytes of program memory maximum")
@@ -128,6 +138,16 @@ impl Chip8 {
         }
     }
 
+    pub fn load_font(&mut self) {
+        let mut font_data_index : usize = self.font.font_location_in_memory;
+
+        for i in self.font.font_data.iter() {
+            self.memory[font_data_index] = *i;
+            font_data_index += 1;
+        }
+    }
+
+
     /// this is the main processor loop for the chip 8 
     /// 
     /// the loop works as follows :
@@ -148,6 +168,7 @@ impl Chip8 {
 
             self.decode_and_execute(instruction);
 
+            // TODO SEPARATE THIS OUT INTO A FUNCTION TO MAKE IT HAVE MASTER AUTHORITY ON THE PROGRAM COUNTER
             // if there was a jump (or later on probably a call) dont increment the program counter
             if !self.jumped_flag_reg {
                 self.pc_reg += 2;
@@ -177,7 +198,7 @@ impl Chip8 {
     pub fn decode_and_execute(&mut self, instruction : u16) {
         match instruction {
             // 0x00E0 (clear screen) 
-            0x00e0 => self.clear_display_instruction(),
+            0x00E0 => self.clear_display_instruction(),
 
             // 0x1NNN (jumps the program counter to a specific location)
             i if i & Self::FXXX_BITMASK == 0x1000 => {
@@ -205,14 +226,14 @@ impl Chip8 {
             }
 
             // set index register i
-            i if i & Self::FXXX_BITMASK == 0xa000 => {
+            i if i & Self::FXXX_BITMASK == 0xA000 => {
                 let number = i & Self::XFFF_BITMASK;
                 self.set_index_reg_instruction(number)
             }
             
             // draw/display 
             //TODO IMPLEMENT DRAW DISPLAY
-            i if i & Self::FXXX_BITMASK == 0xd000 => {
+            i if i & Self::FXXX_BITMASK == 0xD000 => {
                 let x_coordinate = self.general_regs[((i & Self::XFXX_BITMASK) >> 8) as usize];
                 let y_coordinate = self.general_regs[((i & Self::XXFX_BITMASK) >> 4) as usize];
                 let sprite_height = (i & Self::XXXF_BITMASK) as u8;
@@ -220,7 +241,7 @@ impl Chip8 {
             },
 
             // TODO return
-            0x00ee => self.return_instruction(),
+            0x00EE => self.return_instruction(),
 
             // TODO call
             i if i & Self::FXXX_BITMASK == 0x2000 => { 
@@ -234,7 +255,7 @@ impl Chip8 {
                  i & Self::FXXX_BITMASK == 0x4000 || 
                  i & Self::FXXX_BITMASK == 0x5000 || 
                  i & Self::FXXX_BITMASK == 0x9000 || 
-                 i & Self::FXXX_BITMASK == 0xe000 => {
+                 i & Self::FXXX_BITMASK == 0xE000 => {
                 
                 // the first reg value in the instruction will be the value of the register with the index of the 2nd nybble in the instruction
                 let first_reg_value = self.general_regs[((i & Self::XFXX_BITMASK) >> 8) as usize];
@@ -258,9 +279,9 @@ impl Chip8 {
                     0x9000 => self.skipif_vx_reg_nn_instruction(first_reg_value, second_reg_value, false),
 
                     // TODO FIX THIS SOMETHING IS WRONG HERE
-                    j if j == 0xe000 && key_code != None => match instruction & Self::XXFF_BITMASK {
-                        0x009e => self.skipif_vx_reg_nn_instruction(first_reg_value, key_code.unwrap(), true),
-                        0x00a1 => self.skipif_vx_reg_nn_instruction(first_reg_value, key_code.unwrap(), false),
+                    j if j == 0xE000 && key_code != None => match i & Self::XXFF_BITMASK {
+                        0x009E => self.skipif_vx_reg_nn_instruction(first_reg_value, key_code.unwrap(), true),
+                        0x00A1 => self.skipif_vx_reg_nn_instruction(first_reg_value, key_code.unwrap(), false),
                         _ => {}
                     },
 
@@ -286,27 +307,46 @@ impl Chip8 {
                     // subtract with carry backwards
                     0x0007 => self.subtract_vx_reg_instruction(reg, num, true),
                     // left shift instruction
-                    0x000e => self.shift_vx_register(reg, false),
+                    0x000E => self.shift_vx_register(reg, false),
                     _ => {}
                 }
             }
 
-            i if i & Self::FXXX_BITMASK == 0xb000 => {
+            i if i & Self::FXXX_BITMASK == 0xB000 => {
                 let reg = ((i & Self::XFXX_BITMASK) >> 8) as usize;
                 let offset = i & Self::XXFF_BITMASK;
                 self.jump_with_offset_instruction(reg, offset)
             }
 
-            i if i & Self::FXXX_BITMASK == 0xc000 => {
+            i if i & Self::FXXX_BITMASK == 0xC000 => {
                 let reg = ((i & Self::XFXX_BITMASK) >> 8) as usize;
                 let num = (i & Self::XXFF_BITMASK) as u8;
                 self.random_instruction(reg, num);
+            }
+
+            // TODO fill this in all the way
+            i if i & Self::FXXX_BITMASK == 0xF000 => {
+                let reg = ((i & Self::XFXX_BITMASK) >> 8) as usize;
+
+                match i & Self::XXFF_BITMASK {
+                0x0007 => self.set_vx_reg_instruction(reg, self.delay_timer_register),
+                0x0015 => self.set_delay_timer_reg_instruction(self.general_regs[reg]),
+                0x0018 => self.set_sound_timer_reg_instruction(self.general_regs[reg]),
+                0x001E => self.add_to_index_reg_instruction(self.general_regs[reg] as u16),
+                0x000A => self.get_key_instruction(reg),
+                0x0029 => self.set_index_to_font_char(self.general_regs[reg] as usize),
+                0x0033 => {},
+                0x0055 => {},
+                0x0065 => {},
+                    _ => {}
+                }
             }
 
             _ => {}
         }
     }
 
+    /// this will invert the colors of the display 
     pub fn invert_colors(&mut self) {
         self.window.invert_colors();
     }
@@ -337,6 +377,32 @@ impl Chip8 {
     /// for instructions : ANNN
     pub fn set_index_reg_instruction(&mut self, num : u16) {
         self.index_reg = num;
+    }
+
+    pub fn add_to_index_reg_instruction(&mut self, num : u16) {
+        self.index_reg = self.index_reg.wrapping_add(num);
+    }
+
+    ///
+    pub fn set_delay_timer_reg_instruction(&mut self, num : u8) {
+        self.delay_timer_register = num;
+    }
+
+    ///
+    pub fn set_sound_timer_reg_instruction(&mut self, num : u8) {
+        self.sound_timer_register = num;
+    }
+
+    /// this function will decrement the program counter by 2 in order to make this a blocking instruction
+    /// this is a hacky solution but it is fixable later
+    ///  
+    /// TODO : create a pc_reg_control function to handle managing the pc
+    pub fn get_key_instruction(&mut self, reg : usize) {
+        let keyboard_result = self.window.handle_input();
+        match keyboard_result {
+            Keyboard::None => self.pc_reg -= 2,
+            _ => self.general_regs[reg] = keyboard_result.get_keycode().unwrap()
+        }
     }
 
     /// 
@@ -427,7 +493,7 @@ impl Chip8 {
     /// 
     /// in decoder
     /// 
-    /// for instructions : 3XNN 4XNN 5XY0 9XY0
+    /// for instructions : 3XNN 4XNN 5XY0 9XY0 EX9E EXA1
     pub fn skipif_vx_reg_nn_instruction(&mut self, reg_val : u8, num : u8, equality : bool) {
         // this is a tricky way to have one function handle 4 instructions
         // if you have the register equal to the number and you do want them to be equal equality will be true and this is true
@@ -528,5 +594,10 @@ impl Chip8 {
     /// for instructions : CXNN
     pub fn random_instruction(&mut self, reg : usize, num : u8) {
         self.general_regs[reg] = self.rng.gen_range(0..u8::MAX) & num;
+    }
+
+    /// this will set the index register to the location of a font char's sprite
+    pub fn set_index_to_font_char(&mut self, char : usize) {
+        self.index_reg = self.font.char_sprite_locations[char]
     }
 }

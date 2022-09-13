@@ -32,12 +32,12 @@ impl Keyboard {
             Keyboard::Key7 => Some(0x7),
             Keyboard::Key8 => Some(0x8),
             Keyboard::Key9 => Some(0x9),
-            Keyboard::KeyA => Some(0xa),
-            Keyboard::KeyB => Some(0xb),
-            Keyboard::KeyC => Some(0xc),
-            Keyboard::KeyD => Some(0xd),
-            Keyboard::KeyE => Some(0xe),
-            Keyboard::KeyF => Some(0xf),
+            Keyboard::KeyA => Some(0xA),
+            Keyboard::KeyB => Some(0xB),
+            Keyboard::KeyC => Some(0xC),
+            Keyboard::KeyD => Some(0xD),
+            Keyboard::KeyE => Some(0xE),
+            Keyboard::KeyF => Some(0xF),
             _ => None
         }
     }

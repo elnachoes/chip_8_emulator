@@ -9,3 +9,6 @@ pub use chip_8_window::Chip8Window;
 
 pub mod keyboard;
 pub use keyboard::Keyboard;
+
+pub mod font;
+pub use font::Font;
