@@ -1,0 +1,48 @@
+;; set all regs to 10
+6001
+6101
+6201
+6301
+6401
+6501
+6601
+6701
+6801
+6901
+6a01
+6b01
+6c01
+6d01
+6e01
+6f01
+
+;; set index reg to 0
+a000
+
+;; dump all regs to memory location 0
+ff55
+
+;; set all the v regs to 3
+6003
+6103
+6203
+6303
+6403
+6503
+6603
+6703
+6803
+6903
+6a03
+6b03
+6c03
+6d03
+6e03
+6f03
+
+;; set index reg to 0
+a000
+
+;; load all the memory from regs 0
+
+ff65

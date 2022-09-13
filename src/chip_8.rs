@@ -334,10 +334,10 @@ impl Chip8 {
                 0x0018 => self.set_sound_timer_reg_instruction(self.v_regs[reg]),
                 0x001E => self.add_to_index_reg_instruction(self.v_regs[reg] as u16),
                 0x000A => self.get_key_instruction(reg),
-                0x0029 => self.set_index_to_font_char(self.v_regs[reg] as usize),
+                0x0029 => self.set_index_to_font_char_instruction(self.v_regs[reg] as usize),
                 0x0033 => {},
-                0x0055 => {},
-                0x0065 => {},
+                0x0055 => self.store_to_memory_instruction(reg),
+                0x0065 => self.load_from_memory_instruction(reg),
                     _ => {}
                 }
             }
@@ -606,7 +606,50 @@ impl Chip8 {
     }
 
     /// this will set the index register to the location of a font char's sprite
-    pub fn set_index_to_font_char(&mut self, char : usize) {
+    /// 
+    /// for instructions fx33
+    pub fn set_index_to_font_char_instruction(&mut self, char : usize) {
         self.index_reg = self.font.char_sprite_locations[char]
+    }
+
+    /// TODO : IMPLEMENT AFTER THE LOAD AND STORE FROM MEM INSTRUCTION IMPLEMENTED
+    pub fn bcd_instruction(&mut self, reg : usize) {
+        let reg_val = self.v_regs[reg];
+        let index = self.index_reg as usize;
+
+        let first_byte_hundreds = reg_val / 100;
+        let second_byte_tens = (reg_val - (first_byte_hundreds * 100) ) / 10;
+        let third_byte_ones = (reg_val - (first_byte_hundreds * 100) - (second_byte_tens * 10) ) / 1;
+
+        self.memory[index] = first_byte_hundreds;
+        self.memory[index + 1] = second_byte_tens;
+        self.memory[index + 2] = third_byte_ones;
+    }
+
+    ///
+    /// 
+    /// for instructions fx55
+    pub fn store_to_memory_instruction(&mut self, reg : usize) {
+        if self.v_regs[0] == 0 {
+            self.memory[self.index_reg as usize] = self.v_regs[reg]
+        } else {
+            for (i, val) in self.v_regs.iter().enumerate() {
+                self.memory[self.index_reg as usize + i] = *val;
+                if i == reg { break }
+            }
+        }
+    }
+
+    ///
+    /// 
+    /// for instructions fx65
+    pub fn load_from_memory_instruction(&mut self, reg : usize) {
+        if self.v_regs[0] == 0 {
+            self.v_regs[reg] = self.memory[self.index_reg as usize]
+        } else {
+            for i in self.index_reg as usize..=self.index_reg as usize + reg  {
+                self.v_regs[i - self.index_reg as usize] = self.memory[i]
+            }
+        }
     }
 }
