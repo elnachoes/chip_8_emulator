@@ -50,7 +50,7 @@ pub struct Chip8 {
     pub carry_flag_register : bool,
 
     // 16 general purpose 8 bit registers 
-    pub general_regs : Vec<u8>,
+    pub v_regs : Vec<u8>,
 
     pub keyboard : Keyboard,
 
@@ -90,7 +90,7 @@ impl Chip8 {
             vf_flag_reg : false, 
             jumped_flag_reg : false,
             carry_flag_register : false,
-            general_regs : vec![0; 16],
+            v_regs : vec![0; 16],
             keyboard : Keyboard::None,
             rng : thread_rng(),
             font : Font::new_standard()
@@ -234,8 +234,8 @@ impl Chip8 {
             // draw/display 
             //TODO IMPLEMENT DRAW DISPLAY
             i if i & Self::FXXX_BITMASK == 0xD000 => {
-                let x_coordinate = self.general_regs[((i & Self::XFXX_BITMASK) >> 8) as usize];
-                let y_coordinate = self.general_regs[((i & Self::XXFX_BITMASK) >> 4) as usize];
+                let x_coordinate = self.v_regs[((i & Self::XFXX_BITMASK) >> 8) as usize];
+                let y_coordinate = self.v_regs[((i & Self::XXFX_BITMASK) >> 4) as usize];
                 let sprite_height = (i & Self::XXXF_BITMASK) as u8;
                 self.draw_display_instruction(x_coordinate, y_coordinate, sprite_height);
             },
@@ -258,10 +258,10 @@ impl Chip8 {
                  i & Self::FXXX_BITMASK == 0xE000 => {
                 
                 // the first reg value in the instruction will be the value of the register with the index of the 2nd nybble in the instruction
-                let first_reg_value = self.general_regs[((i & Self::XFXX_BITMASK) >> 8) as usize];
+                let first_reg_value = self.v_regs[((i & Self::XFXX_BITMASK) >> 8) as usize];
                 
                 // the second reg value in the instruction will be the value of the register with the index of the 3rd nybble in the instruction
-                let second_reg_value = self.general_regs[((i & Self::XXFX_BITMASK) >> 4) as usize] as u8;
+                let second_reg_value = self.v_regs[((i & Self::XXFX_BITMASK) >> 4) as usize] as u8;
 
                 // keyboard keycode
                 let key_code = self.keyboard.get_keycode();
@@ -291,7 +291,7 @@ impl Chip8 {
 
             i if i & Self::FXXX_BITMASK == 0x8000 => {
                 let reg = ((i & Self::XFXX_BITMASK) >> 8) as usize;
-                let num = self.general_regs[((i & Self::XXFX_BITMASK) >> 4) as usize];
+                let num = self.v_regs[((i & Self::XXFX_BITMASK) >> 4) as usize];
 
                 match i & Self::XXXF_BITMASK {
                     // binary operation instructions
@@ -330,11 +330,11 @@ impl Chip8 {
 
                 match i & Self::XXFF_BITMASK {
                 0x0007 => self.set_vx_reg_instruction(reg, self.delay_timer_register),
-                0x0015 => self.set_delay_timer_reg_instruction(self.general_regs[reg]),
-                0x0018 => self.set_sound_timer_reg_instruction(self.general_regs[reg]),
-                0x001E => self.add_to_index_reg_instruction(self.general_regs[reg] as u16),
+                0x0015 => self.set_delay_timer_reg_instruction(self.v_regs[reg]),
+                0x0018 => self.set_sound_timer_reg_instruction(self.v_regs[reg]),
+                0x001E => self.add_to_index_reg_instruction(self.v_regs[reg] as u16),
                 0x000A => self.get_key_instruction(reg),
-                0x0029 => self.set_index_to_font_char(self.general_regs[reg] as usize),
+                0x0029 => self.set_index_to_font_char(self.v_regs[reg] as usize),
                 0x0033 => {},
                 0x0055 => {},
                 0x0065 => {},
@@ -401,7 +401,7 @@ impl Chip8 {
         let keyboard_result = self.window.handle_input();
         match keyboard_result {
             Keyboard::None => self.pc_reg -= 2,
-            _ => self.general_regs[reg] = keyboard_result.get_keycode().unwrap()
+            _ => self.v_regs[reg] = keyboard_result.get_keycode().unwrap()
         }
     }
 
@@ -451,9 +451,11 @@ impl Chip8 {
                 // if there was a pixel already shaded on that position then set the shade to false and the vf flag reg to true
                 // else shade that pixel
                 } else if bit != 0 {
-                    self.vf_flag_reg = false;
+                    // self.vf_flag_reg = false;
+                    self.v_regs[0xf] = 0;
                     if self.display_buffer[(y_coordinate) as usize][(x_coordinate) as usize] {
-                        self.vf_flag_reg = true;
+                        // self.vf_flag_reg = true;
+                        self.v_regs[0xf] = 1;
                         self.display_buffer[(y_coordinate) as usize][(x_coordinate) as usize] = false;
                     } else {
                         self.display_buffer[(y_coordinate) as usize][(x_coordinate) as usize] = true;
@@ -509,7 +511,7 @@ impl Chip8 {
     /// 
     /// for instructions : 6XNN
     pub fn set_vx_reg_instruction(&mut self, reg : usize, num : u8) {
-        self.general_regs[reg] = num
+        self.v_regs[reg] = num
     }
 
     /// 
@@ -518,11 +520,11 @@ impl Chip8 {
     /// 
     /// for instructions : 8XY1 8XY2 8XY3
     pub fn bin_op_vx_reg_instruction(&mut self, reg : usize, num : u8, op : BinaryOp) {
-        self.general_regs[reg] = match op {
-            BinaryOp::Or => self.general_regs[reg] | num,
-            BinaryOp::And => self.general_regs[reg] & num,
+        self.v_regs[reg] = match op {
+            BinaryOp::Or => self.v_regs[reg] | num,
+            BinaryOp::And => self.v_regs[reg] & num,
             // this MIGHT be wrong check later (probably fine tho because I think there is only binary xor no logical)
-            BinaryOp::Xor => self.general_regs[reg] ^ num,
+            BinaryOp::Xor => self.v_regs[reg] ^ num,
         };
     }
 
@@ -534,34 +536,39 @@ impl Chip8 {
     pub fn add_reg_vx_instruction(&mut self, reg : usize, num : u8, carry : bool) {
         // wrapping add will add and account for overflows
         if carry {
-            match self.general_regs[reg].checked_add(num) {
-                Some(_number) => self.vf_flag_reg = false,
-                _ => self.vf_flag_reg = true
+            match self.v_regs[reg].checked_add(num) {
+                // Some(_number) => self.vf_flag_reg = false,
+                // _ => self.vf_flag_reg = true
+                Some(_number) => self.v_regs[0xf] = 0,
+                _ => self.v_regs[0xf] = 1
             }
         }
 
-        self.general_regs[reg] = self.general_regs[reg].wrapping_add(num)
+        self.v_regs[reg] = self.v_regs[reg].wrapping_add(num)
     }
 
     ///
     /// 
     /// for instructions : 8XY5 8XY7
     pub fn subtract_vx_reg_instruction(&mut self, reg : usize, num : u8, flipped : bool) {
-        self.vf_flag_reg = true;
-        self.general_regs[reg] = if flipped {
-            match num.checked_sub(self.general_regs[reg]) {
+        // self.vf_flag_reg = true;
+        self.v_regs[0xf] = 1; 
+        self.v_regs[reg] = if flipped {
+            match num.checked_sub(self.v_regs[reg]) {
                 Some(result) => result,
                 None => {
-                    self.vf_flag_reg = false;
-                    num.wrapping_sub(self.general_regs[reg])
+                    // self.vf_flag_reg = false;
+                    self.v_regs[0xf] = 0; 
+                    num.wrapping_sub(self.v_regs[reg])
                 }
             }
         } else {
-            match self.general_regs[reg].checked_sub(num) {
+            match self.v_regs[reg].checked_sub(num) {
                 Some(result) => result, 
                 None => {
-                    self.vf_flag_reg = false;
-                    self.general_regs[reg].wrapping_sub(num)
+                    // self.vf_flag_reg = false;
+                    self.v_regs[0xf] = 0; 
+                    self.v_regs[reg].wrapping_sub(num)
                 }
             }
         }
@@ -571,12 +578,14 @@ impl Chip8 {
     /// 
     /// for instructions : 8XY6 8XYE
     pub fn shift_vx_register(&mut self, reg : usize, right_shift : bool) {
-        self.general_regs[reg] = if right_shift {
-            self.vf_flag_reg = (self.general_regs[reg] & Self::BIT1_BITMASK) != 0; 
-            self.general_regs[reg] >> 1
+        self.v_regs[reg] = if right_shift {
+            // self.vf_flag_reg = (self.general_regs[reg] & Self::BIT1_BITMASK) != 0;
+            self.v_regs[0xf] = self.v_regs[reg] & Self::BIT1_BITMASK;
+            self.v_regs[reg] >> 1
         } else {
-            self.vf_flag_reg = (self.general_regs[reg] & Self::BIT8_BITMASK) != 0; 
-            self.general_regs[reg] << 1
+            // self.vf_flag_reg = (self.general_regs[reg] & Self::BIT8_BITMASK) != 0; 
+            self.v_regs[0xf] = self.v_regs[reg] & Self::BIT8_BITMASK;
+            self.v_regs[reg] << 1
         }
     }
 
@@ -585,7 +594,7 @@ impl Chip8 {
     /// for instructions : BXNN
     pub fn jump_with_offset_instruction(&mut self, reg : usize, offset : u16) {
         self.pc_reg += offset;
-        self.pc_reg += self.general_regs[reg] as u16; 
+        self.pc_reg += self.v_regs[reg] as u16; 
         self.jumped_flag_reg = true;
     }
 
@@ -593,7 +602,7 @@ impl Chip8 {
     /// 
     /// for instructions : CXNN
     pub fn random_instruction(&mut self, reg : usize, num : u8) {
-        self.general_regs[reg] = self.rng.gen_range(0..u8::MAX) & num;
+        self.v_regs[reg] = self.rng.gen_range(0..u8::MAX) & num;
     }
 
     /// this will set the index register to the location of a font char's sprite
