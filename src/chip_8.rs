@@ -6,7 +6,7 @@ use rand::{
 
 use std::{
     fs::File,
-    io::BufRead,
+    io::{BufRead, Read},
     io::BufReader,
     thread,
     time, vec,
@@ -83,7 +83,7 @@ impl Chip8 {
             display_buffer : vec![vec![false; Self::SCREEN_WIDTH]; Self::SCREEN_HEIGHT],
             window : Chip8Window::new(),
             stack : Vec::new(),
-            pc_reg : 0,
+            pc_reg : 512,
             index_reg : 0,
             delay_timer_register : 0,
             sound_timer_register : 0,
@@ -97,10 +97,22 @@ impl Chip8 {
         }
     }
 
+    pub fn load_rom_from_bin(&mut self, file_path : &String) {
+        let file = BufReader::new(File::open(file_path).unwrap());
+        let mut index = self.pc_reg as usize;
+        for i in file.bytes() {
+            match i {
+                Ok(byte) => self.memory[index] = byte,
+                _ => break
+            }
+            index += 1
+        }
+    }
+
     ///  this fn will load a rom at location 512 in memory to allow for font and sprite space at the beggining of memory
     ///
     /// TODO : make a more standard assembler later or find a better one and mod it
-    pub fn load_rom_from_radix_at_512(&mut self, file_path : &String) {
+    pub fn load_rom_from_radix(&mut self, file_path : &String) {
         let file_open_result = File::open(file_path);
 
         let file_handle = match file_open_result {
@@ -109,8 +121,7 @@ impl Chip8 {
         };
         
         // the rom will be loaded and started at location 512
-        let mut index = 512;
-        self.pc_reg = 512;
+        let mut index = self.pc_reg as usize;
         
         let reader = BufReader::new(file_handle);
         for (_line_index, line) in reader.lines().enumerate() {
@@ -294,6 +305,8 @@ impl Chip8 {
                 let num = self.v_regs[((i & Self::XXFX_BITMASK) >> 4) as usize];
 
                 match i & Self::XXXF_BITMASK {
+                    0x0000 => self.set_vx_reg_instruction(reg, num),
+
                     // binary operation instructions
                     0x0001 => self.bin_op_vx_reg_instruction(reg, num, BinaryOp::Or),
                     0x0002 => self.bin_op_vx_reg_instruction(reg, num, BinaryOp::And),
@@ -335,7 +348,7 @@ impl Chip8 {
                 0x001E => self.add_to_index_reg_instruction(self.v_regs[reg] as u16),
                 0x000A => self.get_key_instruction(reg),
                 0x0029 => self.set_index_to_font_char_instruction(self.v_regs[reg] as usize),
-                0x0033 => {},
+                0x0033 => self.bcd_instruction(reg),
                 0x0055 => self.store_to_memory_instruction(reg),
                 0x0065 => self.load_from_memory_instruction(reg),
                     _ => {}
@@ -398,10 +411,13 @@ impl Chip8 {
     ///  
     /// TODO : create a pc_reg_control function to handle managing the pc
     pub fn get_key_instruction(&mut self, reg : usize) {
-        let keyboard_result = self.window.handle_input();
-        match keyboard_result {
-            Keyboard::None => self.pc_reg -= 2,
-            _ => self.v_regs[reg] = keyboard_result.get_keycode().unwrap()
+        // let keyboard_result = self.window.handle_input();
+        match self.keyboard.get_keycode() {
+            Some(key_code) => self.v_regs[reg] = key_code,
+            None => self.pc_reg -= 2,
+
+            // Keyboard::None => self.pc_reg -= 2,
+            // _ => self.v_regs[reg] = keyboard_result.get_keycode().unwrap()
         }
     }
 
@@ -630,13 +646,18 @@ impl Chip8 {
     /// 
     /// for instructions fx55
     pub fn store_to_memory_instruction(&mut self, reg : usize) {
-        if self.v_regs[0] == 0 {
-            self.memory[self.index_reg as usize] = self.v_regs[reg]
-        } else {
-            for (i, val) in self.v_regs.iter().enumerate() {
-                self.memory[self.index_reg as usize + i] = *val;
-                if i == reg { break }
-            }
+        // if self.v_regs[0] == 0 {
+        //     self.memory[self.index_reg as usize] = self.v_regs[reg]
+        // } else {
+        //     for (i, val) in self.v_regs.iter().enumerate() {
+        //         self.memory[self.index_reg as usize + i] = *val;
+        //         if i == reg { break }
+        //     }
+        // }
+
+        for (i, val) in self.v_regs.iter().enumerate() {
+            self.memory[self.index_reg as usize + i] = *val;
+            if i == reg { break }
         }
     }
 

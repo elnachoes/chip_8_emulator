@@ -1,0 +1,21 @@
+;; sprite location for C char
+6108
+6205
+
+;; sprite location for 0 char 
+6305
+6409
+
+;; register holding the C char
+650c
+
+;; register holding the 0 char
+6600
+
+;; find the 0 char in sprite mem then draw it 5 pixels tall @ locations in reg 1 and 2
+f529
+d125
+
+;; find the C char in sprite mem then draw it 5 pixels tall @ locations in reg 1 and 2
+f629
+d345
