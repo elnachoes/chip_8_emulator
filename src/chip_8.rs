@@ -187,6 +187,14 @@ impl Chip8 {
                 self.jumped_flag_reg = false;
             }
             
+            if self.delay_timer_register != 0 {
+                self.delay_timer_register -= 1
+            }
+
+            if self.sound_timer_register != 0 {
+                self.sound_timer_register -= 1
+            }
+
             let operation_duration = Self::CLOCK_SLEEP_TIME_SECONDS -instruction_start_time.elapsed().as_secs_f64();
             if operation_duration > 0.0 {
                 thread::sleep(time::Duration::from_secs_f64(operation_duration));

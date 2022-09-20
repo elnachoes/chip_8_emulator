@@ -1,3 +1,5 @@
+use sdl2::keyboard::Scancode;
+
 use sdl2::{
     render::WindowCanvas,
     Sdl, 
@@ -147,6 +149,14 @@ impl Chip8Window {
             }
         }
         keyboard_state
+    }
+
+    // pub fn new_handle_input() {
+
+    // }
+
+    pub fn is_a_pressed(&mut self) -> bool {
+        self.event_pump.keyboard_state().is_scancode_pressed(Scancode::A)
     }
 
     pub fn draw_canvas(&mut self, buffer : Vec<Vec<bool>>) {
