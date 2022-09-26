@@ -182,48 +182,4 @@ impl Chip8Window {
 
         self.canvas.present();
     }
-
-    pub fn profiling_draw_canvas(&mut self, buffer : Vec<Vec<bool>>) {
-
-        println!("profiling_draw_canvas() call : ");
-
-        // clear canvas time
-        let start_time = time::Instant::now();
-        // self.canvas.set_draw_color(self.off_color);
-        self.canvas.clear();
-        let end_time = start_time.elapsed().as_micros();
-        println!("  - clear canvas time -> {} useconds", end_time);
-
-        // setup canvas
-        let start_time = time::Instant::now();
-        self.canvas.set_draw_color(self.on_color);
-        let mut vertical_position : usize = 0;
-        for i in buffer.iter() {
-            let mut horizontal_position : usize = 0;
-            for j in i.iter() {
-                if *j {
-                    let rect = Rect::new(
-                        (horizontal_position * Self::PIXEL_SIZE) as i32,
-                        (vertical_position * Self::PIXEL_SIZE) as i32,
-                        Self::PIXEL_SIZE as u32,
-                        Self::PIXEL_SIZE as u32,
-                    );
-                    match self.canvas.fill_rect(rect) {
-                        Err(string) => panic!("drawing error happened : '{}'", string),
-                        _ => {}
-                    }
-                }
-                horizontal_position += 1;
-            }
-            vertical_position += 1;
-        }
-        let end_time = start_time.elapsed().as_micros();
-        println!("  - setup canvas -> {} useconds", end_time);
-
-        // present canvas time
-        let start_time = time::Instant::now();
-        self.canvas.present();
-        let end_time = start_time.elapsed().as_micros();
-        println!("  - present canvas time -> {} useconds", end_time);
-    }
 }

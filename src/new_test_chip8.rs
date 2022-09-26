@@ -8,18 +8,16 @@ use std::{
     fs::File,
     io::{BufRead, Read},
     io::BufReader,
-    thread,
-    time, vec,
+    vec,
 };
 
 use crate::{
     BinaryOp, 
-    Chip8Window, 
     Keyboard,
     Font
 };
 
-pub struct Chip8 {
+pub struct NewChip8 {
     // memory for the chip8 should be 4k
     // since I am using u16s for the instructions the size of the vector is 4096 / 2 = 2048
     // program memory should be full of nop statements by default wich are 0x0000
@@ -28,8 +26,6 @@ pub struct Chip8 {
     // the display is monochrome so the bytes representing pixels can just be bools
     // the display size should be 32 by 64
     pub display_buffer : Vec<Vec<bool>>,
-
-    pub window : Chip8Window,
 
     // the specs given don't say how many stack entries there should be but I put 16
     pub stack : Vec<u16>,
@@ -59,7 +55,7 @@ pub struct Chip8 {
     pub font : Font,
 }
 
-impl Chip8 {
+impl NewChip8 {
     const SCREEN_HEIGHT : usize = 32;
     const SCREEN_WIDTH : usize = 64;
     const PROGRAM_MEMORY_SIZE : usize = 4096;
@@ -77,11 +73,10 @@ impl Chip8 {
     const BIT1_BITMASK : u8 = 0b0000_0001;
     const BIT8_BITMASK : u8 = 0b1000_0000;
 
-    pub fn new() -> Chip8 {
-        Chip8 {
+    pub fn new() -> NewChip8 {
+        NewChip8 {
             memory : vec![0; Self::PROGRAM_MEMORY_SIZE],
             display_buffer : vec![vec![false; Self::SCREEN_WIDTH]; Self::SCREEN_HEIGHT],
-            window : Chip8Window::new(),
             stack : Vec::new(),
             pc_reg : 512,
             index_reg : 0,
@@ -158,9 +153,12 @@ impl Chip8 {
         }
     }
 
-    pub fn processor_frame(&mut self, keycode : u8) {
+
+    pub fn processor_frame(&mut self, keyboard : Keyboard) -> Result<(), ()>{
         // decode and execute will both read the contents of the instruction and then e xecute the instruction afterwards
         let instruction = self.fetch();
+
+        self.keyboard = keyboard;
 
         self.decode_and_execute(instruction);
 
@@ -179,103 +177,7 @@ impl Chip8 {
         if self.sound_timer_register != 0 {
             self.sound_timer_register -= 1
         }
-    }
-
-    pub fn profiling_processor_loop(&mut self) {
-        loop {
-            println!("profiling_processor_loop() processor frame : ");
-
-            // input time
-            let start_time = time::Instant::now();
-            self.keyboard = self.window.handle_input();
-            let end_time = start_time.elapsed().as_micros();
-            println!("  - handle input time -> {} useconds", end_time);
-            
-            if self.pc_reg as usize > Self::PROGRAM_MEMORY_SIZE - 1 { break }
-
-            // fetch time
-            let start_time = time::Instant::now();
-            let instruction = self.fetch();
-            let end_time = start_time.elapsed().as_micros();
-            println!("  - fetch time -> {} useconds", end_time);
-
-            // decode and execute time
-            let start_time = time::Instant::now();
-            self.decode_and_execute(instruction);
-            let end_time = start_time.elapsed().as_micros();
-            println!("  - decode and execute time -> {} useconds", end_time);
-
-            // updating pc dt st time
-            let start_time = time::Instant::now();
-            if !self.jumped_flag_reg {
-                self.pc_reg += 2;
-            } else {
-                self.jumped_flag_reg = false;
-            }
-            
-            if self.delay_timer_register != 0 {
-                self.delay_timer_register -= 1
-            }
-
-            if self.sound_timer_register != 0 {
-                self.sound_timer_register -= 1
-            }
-            let end_time = start_time.elapsed().as_micros();
-            println!("  - updating pc dt st time -> {} useconds", end_time);
-
-            // draw canvas time
-            let start_time = time::Instant::now();
-            self.window.profiling_draw_canvas(self.display_buffer.clone());
-            let end_time = start_time.elapsed().as_micros();
-            println!("  - draw canvas time -> {} useconds", end_time);
-        }
-    }
-
-
-    /// this is the main processor loop for the chip 8 
-    /// 
-    /// the loop works as follows :
-    /// fetch -> decode -> execute -> incf pc 
-    /// 
-    /// the loop will run at a fixed speed of 1mhz simulated
-    pub fn start_processor_loop(&mut self) {
-        loop {
-            self.keyboard = self.window.handle_input();
-
-            let instruction_start_time = time::Instant::now();
-
-            // if the program counter has run out of instructions break out of the processor loop
-            if self.pc_reg as usize > Self::PROGRAM_MEMORY_SIZE - 1 { break }
-
-            // decode and execute will both read the contents of the instruction and then execute the instruction afterwards
-            let instruction = self.fetch();
-
-            self.decode_and_execute(instruction);
-
-            // TODO SEPARATE THIS OUT INTO A FUNCTION TO MAKE IT HAVE MASTER AUTHORITY ON THE PROGRAM COUNTER
-            // if there was a jump (or later on probably a call) dont increment the program counter
-            if !self.jumped_flag_reg {
-                self.pc_reg += 2;
-            } else {
-                self.jumped_flag_reg = false;
-            }
-            
-            if self.delay_timer_register != 0 {
-                self.delay_timer_register -= 1
-            }
-
-            if self.sound_timer_register != 0 {
-                self.sound_timer_register -= 1
-            }
-
-            let operation_duration = Self::CLOCK_SLEEP_TIME_SECONDS -instruction_start_time.elapsed().as_secs_f64();
-            if operation_duration > 0.0 {
-                thread::sleep(time::Duration::from_secs_f64(operation_duration));
-            }
-
-            //draw the window
-            self.window.draw_canvas(self.display_buffer.clone());
-        }
+        Ok(())
     }
 
     pub fn fetch(&self) -> u16 {
@@ -372,9 +274,7 @@ impl Chip8 {
 
                     // TODO FIX THIS SOMETHING IS WRONG HERE
                     j if j == 0xE000 => match i & Self::XXFF_BITMASK {
-                        0x009E =>{
-                            self.skipif_vx_reg_nn_instruction(first_reg_value, key_code, true)
-                        },
+                        0x009E => self.skipif_vx_reg_nn_instruction(first_reg_value, key_code, true),
                         0x00A1 => self.skipif_vx_reg_nn_instruction(first_reg_value, key_code, false),
                         _ => {}
                     },
@@ -440,11 +340,6 @@ impl Chip8 {
 
             _ => {}
         }
-    }
-
-    /// this will invert the colors of the display 
-    pub fn invert_colors(&mut self) {
-        self.window.invert_colors();
     }
 
     /// this will set every byte storing info for the display to off

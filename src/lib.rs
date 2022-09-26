@@ -12,3 +12,6 @@ pub use keyboard::Keyboard;
 
 pub mod font;
 pub use font::Font;
+
+pub mod new_test_chip8;
+pub use new_test_chip8::NewChip8;
