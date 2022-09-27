@@ -31,5 +31,5 @@ fn run_emulator(cycles_per_frame : u32, rom_path : &String) {
 
 
 fn main() {
-    run_emulator(50, &String::from("C:\\Sudo Desktop\\programming\\RustStuffs\\chip_8_emulator\\testroms\\test_opcode.ch8"));
+    run_emulator(45, &String::from("C:\\Sudo Desktop\\programming\\RustStuffs\\chip_8_emulator\\fullgames\\flightrunner.ch8"));
 }

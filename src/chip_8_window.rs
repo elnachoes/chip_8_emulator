@@ -1,5 +1,3 @@
-use sdl2::keyboard::Scancode;
-
 use sdl2::{
     render::WindowCanvas,
     Sdl, 
@@ -80,76 +78,59 @@ impl Chip8Window {
                 Event::KeyDown { keycode: Some(Keycode::Escape), .. } => {
                     std::process::exit(0);
                 },
-
-                Event::KeyDown { keycode : Some(Keycode::Kp0), .. } => {
-                    keyboard_state = Keyboard::Key0
-                }
-                
-                Event::KeyDown { keycode : Some(Keycode::Kp1), .. } => {
+                Event::KeyDown { keycode: Some(Keycode::Num1), .. } => {
                     keyboard_state = Keyboard::Key1
-                }
-                
-                Event::KeyDown { keycode : Some(Keycode::Kp2), .. } => {
+                },
+                Event::KeyDown { keycode: Some(Keycode::Num2), .. } => {
                     keyboard_state = Keyboard::Key2
-                }
-                
-                Event::KeyDown { keycode : Some(Keycode::Kp3), .. } => {
+                },
+                Event::KeyDown { keycode: Some(Keycode::Num3), .. } => {
                     keyboard_state = Keyboard::Key3
-                }
-                
-                Event::KeyDown { keycode : Some(Keycode::Kp4), .. } => {
-                    keyboard_state = Keyboard::Key4
-                }
-                
-                Event::KeyDown { keycode : Some(Keycode::Kp5), .. } => {
-                    keyboard_state = Keyboard::Key5
-                }
-                
-                Event::KeyDown { keycode : Some(Keycode::Kp6), .. } => {
-                    keyboard_state = Keyboard::Key6
-                }
-                
-                Event::KeyDown { keycode : Some(Keycode::Kp7), .. } => {
-                    keyboard_state = Keyboard::Key7
-                }
-                
-                Event::KeyDown { keycode : Some(Keycode::Kp8), .. } => {
-                    keyboard_state = Keyboard::Key8
-                }
-                
-                Event::KeyDown { keycode : Some(Keycode::Kp9), .. } => {
-                    keyboard_state = Keyboard::Key9
-                }
-                
-                Event::KeyDown { keycode : Some(Keycode::KpPeriod), .. } => {
-                    keyboard_state = Keyboard::KeyA
-                }
-                
-                Event::KeyDown { keycode : Some(Keycode::KpEnter), .. } => {
-                    keyboard_state = Keyboard::KeyB
-                }
-
-                Event::KeyDown { keycode : Some(Keycode::KpPlus), .. } => {
+                },
+                Event::KeyDown { keycode: Some(Keycode::Num4), .. } => {
                     keyboard_state = Keyboard::KeyC
-                }
-                
-                Event::KeyDown { keycode : Some(Keycode::KpMinus), .. } => {
+                },
+                Event::KeyDown { keycode: Some(Keycode::Q), .. } => {
+                    keyboard_state = Keyboard::Key4
+                },
+                Event::KeyDown { keycode: Some(Keycode::W), .. } => {
+                    keyboard_state = Keyboard::Key5
+                },
+                Event::KeyDown { keycode: Some(Keycode::E), .. } => {
+                    keyboard_state = Keyboard::Key6
+                },
+                Event::KeyDown { keycode: Some(Keycode::R), .. } => {
                     keyboard_state = Keyboard::KeyD
-                    
-                }
-                
-                Event::KeyDown { keycode : Some(Keycode::KpMultiply), .. } => {
+                },
+                Event::KeyDown { keycode: Some(Keycode::A), .. } => {
+                    keyboard_state = Keyboard::Key7
+                },
+                Event::KeyDown { keycode: Some(Keycode::S), .. } => {
+                    keyboard_state = Keyboard::Key8
+                },
+                Event::KeyDown { keycode: Some(Keycode::D), .. } => {
+                    keyboard_state = Keyboard::Key9
+                },
+                Event::KeyDown { keycode: Some(Keycode::F), .. } => {
                     keyboard_state = Keyboard::KeyE
-                    
-                }
-                
-                Event::KeyDown { keycode : Some(Keycode::KpDivide), .. } => {
+                },
+                Event::KeyDown { keycode: Some(Keycode::Z), .. } => {
+                    keyboard_state = Keyboard::KeyA
+                },
+                Event::KeyDown { keycode: Some(Keycode::X), .. } => {
+                    keyboard_state = Keyboard::Key0
+                },
+                Event::KeyDown { keycode: Some(Keycode::C), .. } => {
+                    keyboard_state = Keyboard::KeyB
+                },
+                Event::KeyDown { keycode: Some(Keycode::V), .. } => {
                     keyboard_state = Keyboard::KeyF
-                }
-
+                },
                 _ => {}
             }
         }
+
+
         keyboard_state
     }
 
