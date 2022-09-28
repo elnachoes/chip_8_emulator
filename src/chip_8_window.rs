@@ -9,8 +9,6 @@ use sdl2::{
     keyboard::Keycode
 };
 
-use std::time;
-
 use crate::Keyboard;
 
 static OFF_COLOR : Color = Color::RGB(255,255,255);
@@ -71,7 +69,6 @@ impl Chip8Window {
 
     // have this return a set of pressed keys back to the chip8
     pub fn handle_input(&mut self) -> Keyboard {
-        let mut keyboard_state = Keyboard::None;
         for event in self.event_pump.poll_iter() {
             match event {
                 Event::Quit {..} |
@@ -79,59 +76,58 @@ impl Chip8Window {
                     std::process::exit(0);
                 },
                 Event::KeyDown { keycode: Some(Keycode::Num1), .. } => {
-                    keyboard_state = Keyboard::Key1
+                    return Keyboard::Key1
                 },
                 Event::KeyDown { keycode: Some(Keycode::Num2), .. } => {
-                    keyboard_state = Keyboard::Key2
+                    return Keyboard::Key2
                 },
                 Event::KeyDown { keycode: Some(Keycode::Num3), .. } => {
-                    keyboard_state = Keyboard::Key3
+                    return Keyboard::Key3
                 },
                 Event::KeyDown { keycode: Some(Keycode::Num4), .. } => {
-                    keyboard_state = Keyboard::KeyC
+                    return Keyboard::KeyC
                 },
                 Event::KeyDown { keycode: Some(Keycode::Q), .. } => {
-                    keyboard_state = Keyboard::Key4
+                    return Keyboard::Key4
                 },
                 Event::KeyDown { keycode: Some(Keycode::W), .. } => {
-                    keyboard_state = Keyboard::Key5
+                    return Keyboard::Key5
                 },
                 Event::KeyDown { keycode: Some(Keycode::E), .. } => {
-                    keyboard_state = Keyboard::Key6
+                    return Keyboard::Key6
                 },
                 Event::KeyDown { keycode: Some(Keycode::R), .. } => {
-                    keyboard_state = Keyboard::KeyD
+                    return Keyboard::KeyD
                 },
                 Event::KeyDown { keycode: Some(Keycode::A), .. } => {
-                    keyboard_state = Keyboard::Key7
+                    return Keyboard::Key7
                 },
                 Event::KeyDown { keycode: Some(Keycode::S), .. } => {
-                    keyboard_state = Keyboard::Key8
+                    return Keyboard::Key8
                 },
                 Event::KeyDown { keycode: Some(Keycode::D), .. } => {
-                    keyboard_state = Keyboard::Key9
+                    return Keyboard::Key9
                 },
                 Event::KeyDown { keycode: Some(Keycode::F), .. } => {
-                    keyboard_state = Keyboard::KeyE
+                    return Keyboard::KeyE
                 },
                 Event::KeyDown { keycode: Some(Keycode::Z), .. } => {
-                    keyboard_state = Keyboard::KeyA
+                    return Keyboard::KeyA
                 },
                 Event::KeyDown { keycode: Some(Keycode::X), .. } => {
-                    keyboard_state = Keyboard::Key0
+                    return Keyboard::Key0
                 },
                 Event::KeyDown { keycode: Some(Keycode::C), .. } => {
-                    keyboard_state = Keyboard::KeyB
+                    return Keyboard::KeyB
                 },
                 Event::KeyDown { keycode: Some(Keycode::V), .. } => {
-                    keyboard_state = Keyboard::KeyF
+                    return Keyboard::KeyF
                 },
                 _ => {}
             }
         }
 
-
-        keyboard_state
+        Keyboard::None
     }
 
     pub fn draw_canvas(&mut self, buffer : Vec<Vec<bool>>) {
@@ -162,49 +158,5 @@ impl Chip8Window {
         }
 
         self.canvas.present();
-    }
-
-    pub fn profiling_draw_canvas(&mut self, buffer : Vec<Vec<bool>>) {
-
-        println!("profiling_draw_canvas() call : ");
-
-        // clear canvas time
-        let start_time = time::Instant::now();
-        // self.canvas.set_draw_color(self.off_color);
-        self.canvas.clear();
-        let end_time = start_time.elapsed().as_micros();
-        println!("  - clear canvas time -> {} useconds", end_time);
-
-        // setup canvas
-        let start_time = time::Instant::now();
-        self.canvas.set_draw_color(self.on_color);
-        let mut vertical_position : usize = 0;
-        for i in buffer.iter() {
-            let mut horizontal_position : usize = 0;
-            for j in i.iter() {
-                if *j {
-                    let rect = Rect::new(
-                        (horizontal_position * Self::PIXEL_SIZE) as i32,
-                        (vertical_position * Self::PIXEL_SIZE) as i32,
-                        Self::PIXEL_SIZE as u32,
-                        Self::PIXEL_SIZE as u32,
-                    );
-                    match self.canvas.fill_rect(rect) {
-                        Err(string) => panic!("drawing error happened : '{}'", string),
-                        _ => {}
-                    }
-                }
-                horizontal_position += 1;
-            }
-            vertical_position += 1;
-        }
-        let end_time = start_time.elapsed().as_micros();
-        println!("  - setup canvas -> {} useconds", end_time);
-
-        // present canvas time
-        let start_time = time::Instant::now();
-        self.canvas.present();
-        let end_time = start_time.elapsed().as_micros();
-        println!("  - present canvas time -> {} useconds", end_time);
     }
 }

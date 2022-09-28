@@ -40,11 +40,6 @@ pub struct NewChip8 {
     pub delay_timer_register : u8,
     pub sound_timer_register : u8,
     
-    // flag registers
-    pub vf_flag_reg : bool,
-    pub jumped_flag_reg : bool,
-    pub carry_flag_register : bool,
-
     // 16 general purpose 8 bit registers 
     pub v_regs : Vec<u8>,
 
@@ -59,7 +54,6 @@ impl NewChip8 {
     const SCREEN_HEIGHT : usize = 32;
     const SCREEN_WIDTH : usize = 64;
     const PROGRAM_MEMORY_SIZE : usize = 4096;
-    const CLOCK_SLEEP_TIME_SECONDS : f64 = 1.0 / 700.0;
 
     // 16bit bitmasks
     const FXXX_BITMASK : u16 = 0xF000;
@@ -82,9 +76,6 @@ impl NewChip8 {
             index_reg : 0,
             delay_timer_register : 0,
             sound_timer_register : 0,
-            vf_flag_reg : false, 
-            jumped_flag_reg : false,
-            carry_flag_register : false,
             v_regs : vec![0; 16],
             keyboard : Keyboard::None,
             rng : thread_rng(),
@@ -92,6 +83,10 @@ impl NewChip8 {
         }
     }
 
+
+    /// this fn will load a rom from a binary file into the chip 8's memory
+    /// 
+    /// TODO : handle rom being to large
     pub fn load_rom_from_bin(&mut self, file_path : &String) {
         let file = BufReader::new(File::open(file_path).unwrap());
         let mut index = self.pc_reg as usize;
@@ -106,13 +101,25 @@ impl NewChip8 {
 
     ///  this fn will load a rom at location 512 in memory to allow for font and sprite space at the beggining of memory
     ///
-    /// TODO : make a more standard assembler later or find a better one and mod it
-    pub fn load_rom_from_radix(&mut self, file_path : &String) {
+    /// this fn is mostley for debugging and writing programs in hex to test things
+    /// 
+    /// this loads a program that looks like this with comments starting with ';;' :
+    /// 
+    /// ;; registers to set the font location 
+    /// 600c
+    /// 6105
+    /// 
+    /// ;; put the font location here
+    /// f029
+    /// 
+    /// ;; draw the font char
+    /// d015
+    pub fn load_rom_from_radix(&mut self, file_path : &String) -> Result<(), String>{
         let file_open_result = File::open(file_path);
 
         let file_handle = match file_open_result {
             Ok(file) => { file } 
-            _ => { panic!("error : could not load file at specified path!") } 
+            _ => { return Err(String::from("error : could not load file at specified path!")) } 
         };
         
         // the rom will be loaded and started at location 512
@@ -121,7 +128,7 @@ impl NewChip8 {
         let reader = BufReader::new(file_handle);
         for (_line_index, line) in reader.lines().enumerate() {
             if index > Self::PROGRAM_MEMORY_SIZE - 1 {
-                panic!("error : your program is too large! 4096 bytes of program memory maximum")
+                return Err(String::from("error : your program is too large! 4096 bytes of program memory maximum"))
             }
 
             let line = line.unwrap();
@@ -135,15 +142,18 @@ impl NewChip8 {
             
             let instruction = match instruction_result {
                 Ok(hex_number) => { hex_number }
-                _ => { panic!("error : instructions must be in radix hex like 'XXXX' !") }
+                _ => { return Err(String::from("error : instructions must be in radix hex like 'XXXX' !")) }
             };
 
             self.memory[index as usize] = (instruction >> 8) as u8; 
             self.memory[index as usize + 1] = (instruction & Self::XXFF_BITMASK) as u8; 
             index += 2;
         }
+
+        Ok(())
     }
 
+    /// this fn loads a font into memory based on the font object given in the ctor
     pub fn load_font(&mut self) {
         let mut font_data_index : usize = self.font.font_location_in_memory;
 
@@ -153,30 +163,20 @@ impl NewChip8 {
         }
     }
 
-
-    pub fn processor_frame(&mut self, keyboard : Keyboard) -> Result<(), ()>{
+    /// this fn is for calling one frame of the procesor 
+    pub fn processor_frame(&mut self, keyboard : Keyboard) -> Result<(), String>{
         // decode and execute will both read the contents of the instruction and then e xecute the instruction afterwards
+        
+        if self.pc_reg as usize > Self::PROGRAM_MEMORY_SIZE - 1 { 
+            return Err(String::from("error : out of memory"));
+        }
+        
         let instruction = self.fetch();
 
         self.keyboard = keyboard;
 
         self.decode_and_execute(instruction);
 
-        // TODO SEPARATE THIS OUT INTO A FUNCTION TO MAKE IT HAVE MASTER AUTHORITY ON THE PROGRAM COUNTER
-        // if there was a jump (or later on probably a call) dont increment the program counter
-        if !self.jumped_flag_reg {
-            self.pc_reg += 2;
-        } else {
-            self.jumped_flag_reg = false;
-        }
-        
-        if self.delay_timer_register != 0 {
-            self.delay_timer_register -= 1
-        }
-
-        if self.sound_timer_register != 0 {
-            self.sound_timer_register -= 1
-        }
         Ok(())
     }
 
@@ -325,15 +325,15 @@ impl NewChip8 {
                 let reg = ((i & Self::XFXX_BITMASK) >> 8) as usize;
 
                 match i & Self::XXFF_BITMASK {
-                0x0007 => self.set_vx_reg_instruction(reg, self.delay_timer_register),
-                0x0015 => self.set_delay_timer_reg_instruction(self.v_regs[reg]),
-                0x0018 => self.set_sound_timer_reg_instruction(self.v_regs[reg]),
-                0x001E => self.add_to_index_reg_instruction(self.v_regs[reg] as u16),
-                0x000A => self.get_key_instruction(reg),
-                0x0029 => self.set_index_to_font_char_instruction(self.v_regs[reg] as usize),
-                0x0033 => self.bcd_instruction(reg),
-                0x0055 => self.store_to_memory_instruction(reg),
-                0x0065 => self.load_from_memory_instruction(reg),
+                    0x0007 => self.set_vx_reg_instruction(reg, self.delay_timer_register),
+                    0x0015 => self.set_delay_timer_reg_instruction(self.v_regs[reg]),
+                    0x0018 => self.set_sound_timer_reg_instruction(self.v_regs[reg]),
+                    0x001E => self.add_to_index_reg_instruction(self.v_regs[reg] as u16),
+                    0x000A => self.get_key_instruction(reg),
+                    0x0029 => self.set_index_to_font_char_instruction(self.v_regs[reg] as usize),
+                    0x0033 => self.bcd_instruction(reg),
+                    0x0055 => self.store_to_memory_instruction(reg),
+                    0x0065 => self.load_from_memory_instruction(reg),
                     _ => {}
                 }
             }
@@ -342,6 +342,19 @@ impl NewChip8 {
         }
     }
 
+
+    pub fn update_timers(&mut self) {
+        if self.delay_timer_register != 0 {
+            self.delay_timer_register -= 1
+        }
+
+        if self.sound_timer_register != 0 {
+            self.sound_timer_register -= 1
+        }
+    }
+
+
+
     /// this will set every byte storing info for the display to off
     /// 
     /// in decoder
@@ -349,6 +362,7 @@ impl NewChip8 {
     /// for instructions : 00E0
     pub fn clear_display_instruction(&mut self) {
         self.display_buffer = vec![vec![false; Self::SCREEN_WIDTH]; Self::SCREEN_HEIGHT];
+        self.pc_reg += 2
     }
 
     /// this will just set the program counter to a specific location in program memory of NNN
@@ -358,7 +372,7 @@ impl NewChip8 {
     /// for instructions : 1NNN
     pub fn jump_instruction(&mut self, location : u16) {
         self.pc_reg = location;
-        self.jumped_flag_reg = true
+        // self.jumped_flag_reg = true
     }
 
     /// this sets the index register to a specific number
@@ -368,20 +382,24 @@ impl NewChip8 {
     /// for instructions : ANNN
     pub fn set_index_reg_instruction(&mut self, num : u16) {
         self.index_reg = num;
+        self.pc_reg += 2
     }
 
     pub fn add_to_index_reg_instruction(&mut self, num : u16) {
         self.index_reg = self.index_reg.wrapping_add(num);
+        self.pc_reg += 2
     }
 
     ///
     pub fn set_delay_timer_reg_instruction(&mut self, num : u8) {
         self.delay_timer_register = num;
+        self.pc_reg += 2
     }
 
     ///
     pub fn set_sound_timer_reg_instruction(&mut self, num : u8) {
         self.sound_timer_register = num;
+        self.pc_reg += 2
     }
 
     /// this function will decrement the program counter by 2 in order to make this a blocking instruction
@@ -391,11 +409,12 @@ impl NewChip8 {
     pub fn get_key_instruction(&mut self, reg : usize) {
         // let keyboard_result = self.window.handle_input();
         match self.keyboard.get_keycode() {
-            key_code if key_code <= 0xf => self.v_regs[reg] = key_code,
-            _ => self.pc_reg -= 2,
-
-            // Keyboard::None => self.pc_reg -= 2,
-            // _ => self.v_regs[reg] = keyboard_result.get_keycode().unwrap()
+            key_code if key_code <= 0xf => {
+                self.v_regs[reg] = key_code;
+                self.pc_reg += 2
+            },
+            // _ => self.pc_reg -= 2,
+            _ => {}
         }
     }
 
@@ -420,7 +439,7 @@ impl NewChip8 {
             // TODO : look into double ended iterators to make this a bit cleaner
             let mut sprite_slice_iter = 0..8;
             
-            // this is the loop for the individual columns 
+            // this is the loop for the individual columns  
             'columns : for shift_amount in sprite_slice_iter.clone().rev() {
 
                 // this gets the individual bit for a given column in the sprite row
@@ -457,6 +476,7 @@ impl NewChip8 {
                 }
             }
         }
+        self.pc_reg += 2
     }
     
     ///
@@ -470,7 +490,7 @@ impl NewChip8 {
             panic!("error : stack underflow");
         }
         self.pc_reg = return_address.unwrap();
-        self.jumped_flag_reg = true;
+        // self.jumped_flag_reg = true;
     }
 
     /// 
@@ -482,7 +502,7 @@ impl NewChip8 {
         // + 2 to make sure that it executes the NEXT instruction once a return is hit
         self.stack.push(self.pc_reg + 2);
         self.pc_reg = location;
-        self.jumped_flag_reg = true
+        // self.jumped_flag_reg = true
     }
 
     /// 
@@ -495,6 +515,9 @@ impl NewChip8 {
         // if you have the register equal to the number and you do want them to be equal equality will be true and this is true
         // if they are not equal and you do not want them to be equal this will go through
         if (reg_val == num) == equality {
+            self.pc_reg += 4
+        }
+        else {
             self.pc_reg += 2
         }
     }
@@ -505,7 +528,8 @@ impl NewChip8 {
     /// 
     /// for instructions : 6XNN
     pub fn set_vx_reg_instruction(&mut self, reg : usize, num : u8) {
-        self.v_regs[reg] = num
+        self.v_regs[reg] = num;
+        self.pc_reg += 2
     }
 
     /// 
@@ -520,6 +544,7 @@ impl NewChip8 {
             // this MIGHT be wrong check later (probably fine tho because I think there is only binary xor no logical)
             BinaryOp::Xor => self.v_regs[reg] ^ num,
         };
+        self.pc_reg += 2
     }
 
     ///
@@ -538,7 +563,9 @@ impl NewChip8 {
             }
         }
 
-        self.v_regs[reg] = self.v_regs[reg].wrapping_add(num)
+        self.v_regs[reg] = self.v_regs[reg].wrapping_add(num);
+
+        self.pc_reg += 2
     }
 
     ///
@@ -565,7 +592,9 @@ impl NewChip8 {
                     self.v_regs[reg].wrapping_sub(num)
                 }
             }
-        }
+        };
+
+        self.pc_reg += 2
     }
 
     ///
@@ -580,7 +609,9 @@ impl NewChip8 {
             // self.vf_flag_reg = (self.general_regs[reg] & Self::BIT8_BITMASK) != 0; 
             self.v_regs[0xf] = self.v_regs[reg] & Self::BIT8_BITMASK;
             self.v_regs[reg] << 1
-        }
+        };
+
+        self.pc_reg += 2
     }
 
     ///
@@ -589,7 +620,7 @@ impl NewChip8 {
     pub fn jump_with_offset_instruction(&mut self, reg : usize, offset : u16) {
         self.pc_reg += offset;
         self.pc_reg += self.v_regs[reg] as u16; 
-        self.jumped_flag_reg = true;
+        // self.jumped_flag_reg = true;
     }
 
     ///
@@ -597,13 +628,15 @@ impl NewChip8 {
     /// for instructions : CXNN
     pub fn random_instruction(&mut self, reg : usize, num : u8) {
         self.v_regs[reg] = self.rng.gen_range(0..u8::MAX) & num;
+        self.pc_reg += 2
     }
 
     /// this will set the index register to the location of a font char's sprite
     /// 
     /// for instructions fx33
     pub fn set_index_to_font_char_instruction(&mut self, char : usize) {
-        self.index_reg = self.font.char_sprite_locations[char]
+        self.index_reg = self.font.char_sprite_locations[char];
+        self.pc_reg += 2
     }
 
     /// TODO : IMPLEMENT AFTER THE LOAD AND STORE FROM MEM INSTRUCTION IMPLEMENTED
@@ -618,28 +651,25 @@ impl NewChip8 {
         self.memory[index] = first_byte_hundreds;
         self.memory[index + 1] = second_byte_tens;
         self.memory[index + 2] = third_byte_ones;
+        
+        self.pc_reg += 2
     }
 
-    ///
+    /// this fn dumps the contents of all of the v registers to a given location in memory up to a given register
+    /// 
+    /// if you were to select register vf it should store the contents of every single register.
     /// 
     /// for instructions fx55
     pub fn store_to_memory_instruction(&mut self, reg : usize) {
-        // if self.v_regs[0] == 0 {
-        //     self.memory[self.index_reg as usize] = self.v_regs[reg]
-        // } else {
-        //     for (i, val) in self.v_regs.iter().enumerate() {
-        //         self.memory[self.index_reg as usize + i] = *val;
-        //         if i == reg { break }
-        //     }
-        // }
-
         for (i, val) in self.v_regs.iter().enumerate() {
             self.memory[self.index_reg as usize + i] = *val;
             if i == reg { break }
         }
+
+        self.pc_reg += 2
     }
 
-    ///
+    /// this fn loads 
     /// 
     /// for instructions fx65
     pub fn load_from_memory_instruction(&mut self, reg : usize) {
@@ -650,5 +680,7 @@ impl NewChip8 {
                 self.v_regs[i - self.index_reg as usize] = self.memory[i]
             }
         }
+
+        self.pc_reg += 2
     }
 }

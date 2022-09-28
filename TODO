@@ -1,1 +1,13 @@
-start counting down the delay timer and sound timer
+basic things to fix : 
+
+    handle running out of memory
+
+    handle sound beep
+
+    have the clock be some division of 60. so if the clock is 700 the cpu frames per frame should be 700/60
+
+extended stuff: 
+
+    have custom stuff on the chip like program counter start and memory amount.
+
+    change the draw instruction and display buffer to output something that is a bit map and not an array of bools

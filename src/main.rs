@@ -6,10 +6,11 @@ fn run_emulator(cycles_per_frame : u32, rom_path : &String) {
     
     let mut chip8 = NewChip8::new();
     chip8.load_rom_from_bin(rom_path);
-    // chip8.load_rom_from_radix(rom_path);
     chip8.load_font();
 
     let mut chip8_window = Chip8Window::new();
+
+    chip8_window.invert_colors();
 
     loop {
 
@@ -18,10 +19,14 @@ fn run_emulator(cycles_per_frame : u32, rom_path : &String) {
         let keyboard = chip8_window.handle_input();
 
         for _ in 0..cycles_per_frame {
-            chip8.processor_frame(keyboard.clone());
+            if let Err(_) = chip8.processor_frame(keyboard.clone()) {
+                return
+            }
         }
 
         chip8_window.draw_canvas(chip8.display_buffer.clone());
+        
+        chip8.update_timers();
 
         let remaining_frame_time = FRAME_TIME - start_frame_time.elapsed().as_secs_f64();
 
@@ -31,5 +36,6 @@ fn run_emulator(cycles_per_frame : u32, rom_path : &String) {
 
 
 fn main() {
-    run_emulator(45, &String::from("C:\\Sudo Desktop\\programming\\RustStuffs\\chip_8_emulator\\fullgames\\flightrunner.ch8"));
+    // run_emulator(30, &String::from("C:\\Sudo Desktop\\programming\\RustStuffs\\chip_8_emulator\\testroms\\test_opcode.ch8"));
+    run_emulator(1000, &String::from("C:\\Sudo Desktop\\programming\\RustStuffs\\chip_8_emulator\\fullgames\\chipquarium.ch8"));
 }
