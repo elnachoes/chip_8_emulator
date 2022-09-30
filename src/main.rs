@@ -1,4 +1,4 @@
-use chip_8_emulator::{ run_emulator };
+use rip8::{ run_emulator };
 
 fn main() {
 
@@ -15,9 +15,5 @@ fn main() {
         Err(_error) => panic!("error invalid argument given for clockspeed")
     };
 
-    // let parse_result = args
-
     run_emulator(hertz, &args[2]);
-
-    // run_emulator(9000, &String::from("C:\\Sudo Desktop\\programming\\RustStuffs\\chip_8_emulator\\fullgames\\flightrunner.ch8"));
 }

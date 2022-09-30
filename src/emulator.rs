@@ -30,6 +30,7 @@ pub fn run_emulator(hertz : u32, rom_path : &String) {
 
         let remaining_frame_time = FRAME_TIME - start_frame_time.elapsed().as_secs_f64();
 
+        // if you move the window for some reason the time duration might be negative so this prevents a crashs
         if remaining_frame_time.is_sign_positive() {
             thread::sleep(time::Duration::from_secs_f64(remaining_frame_time))
         } 

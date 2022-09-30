@@ -34,7 +34,7 @@ impl Chip8Window {
         let video_subsystem = sdl_context.video().unwrap();
     
         let window = video_subsystem.window(
-            "chip-8-emulator", 
+            "rip8", 
             (Self::SCREEN_WIDTH * Self::PIXEL_SIZE) as u32,
             (Self::SCREEN_HEIGHT * Self::PIXEL_SIZE) as u32,)
             .position_centered()
