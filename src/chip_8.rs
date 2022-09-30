@@ -8,13 +8,11 @@ use std::{
     fs::File,
     io::{BufRead, Read},
     io::BufReader,
-    thread,
-    time, vec,
+    vec,
 };
 
 use crate::{
     BinaryOp, 
-    Chip8Window, 
     Keyboard,
     Font
 };
@@ -29,8 +27,6 @@ pub struct Chip8 {
     // the display size should be 32 by 64
     pub display_buffer : Vec<Vec<bool>>,
 
-    pub window : Chip8Window,
-
     // the specs given don't say how many stack entries there should be but I put 16
     pub stack : Vec<u16>,
     
@@ -44,18 +40,16 @@ pub struct Chip8 {
     pub delay_timer_register : u8,
     pub sound_timer_register : u8,
     
-    // flag registers
-    pub vf_flag_reg : bool,
-    pub jumped_flag_reg : bool,
-    pub carry_flag_register : bool,
-
     // 16 general purpose 8 bit registers 
     pub v_regs : Vec<u8>,
 
+    // current keyboard state
     pub keyboard : Keyboard,
 
+    // rng for the rng function
     pub rng : ThreadRng,
 
+    // font data
     pub font : Font,
 }
 
@@ -63,7 +57,6 @@ impl Chip8 {
     const SCREEN_HEIGHT : usize = 32;
     const SCREEN_WIDTH : usize = 64;
     const PROGRAM_MEMORY_SIZE : usize = 4096;
-    const CLOCK_SLEEP_TIME_SECONDS : f64 = 1.0 / 700.0;
 
     // 16bit bitmasks
     const FXXX_BITMASK : u16 = 0xF000;
@@ -81,15 +74,11 @@ impl Chip8 {
         Chip8 {
             memory : vec![0; Self::PROGRAM_MEMORY_SIZE],
             display_buffer : vec![vec![false; Self::SCREEN_WIDTH]; Self::SCREEN_HEIGHT],
-            window : Chip8Window::new(),
             stack : Vec::new(),
             pc_reg : 512,
             index_reg : 0,
             delay_timer_register : 0,
             sound_timer_register : 0,
-            vf_flag_reg : false, 
-            jumped_flag_reg : false,
-            carry_flag_register : false,
             v_regs : vec![0; 16],
             keyboard : Keyboard::None,
             rng : thread_rng(),
@@ -97,6 +86,10 @@ impl Chip8 {
         }
     }
 
+
+    /// this fn will load a rom from a binary file into the chip 8's memory
+    /// 
+    /// TODO : handle rom being to large
     pub fn load_rom_from_bin(&mut self, file_path : &String) {
         let file = BufReader::new(File::open(file_path).unwrap());
         let mut index = self.pc_reg as usize;
@@ -111,13 +104,25 @@ impl Chip8 {
 
     ///  this fn will load a rom at location 512 in memory to allow for font and sprite space at the beggining of memory
     ///
-    /// TODO : make a more standard assembler later or find a better one and mod it
-    pub fn load_rom_from_radix(&mut self, file_path : &String) {
+    /// this fn is mostley for debugging and writing programs in hex to test things
+    /// 
+    /// this loads a program that looks like this with comments starting with ';;' :
+    /// 
+    /// ;; registers to set the font location 
+    /// 600c
+    /// 6105
+    /// 
+    /// ;; put the font location here
+    /// f029
+    /// 
+    /// ;; draw the font char
+    /// d015
+    pub fn load_rom_from_radix(&mut self, file_path : &String) -> Result<(), String>{
         let file_open_result = File::open(file_path);
 
         let file_handle = match file_open_result {
             Ok(file) => { file } 
-            _ => { panic!("error : could not load file at specified path!") } 
+            _ => { return Err(String::from("error : could not load file at specified path!")) } 
         };
         
         // the rom will be loaded and started at location 512
@@ -126,7 +131,7 @@ impl Chip8 {
         let reader = BufReader::new(file_handle);
         for (_line_index, line) in reader.lines().enumerate() {
             if index > Self::PROGRAM_MEMORY_SIZE - 1 {
-                panic!("error : your program is too large! 4096 bytes of program memory maximum")
+                return Err(String::from("error : your program is too large! 4096 bytes of program memory maximum"))
             }
 
             let line = line.unwrap();
@@ -140,15 +145,18 @@ impl Chip8 {
             
             let instruction = match instruction_result {
                 Ok(hex_number) => { hex_number }
-                _ => { panic!("error : instructions must be in radix hex like 'XXXX' !") }
+                _ => { return Err(String::from("error : instructions must be in radix hex like 'XXXX' !")) }
             };
 
             self.memory[index as usize] = (instruction >> 8) as u8; 
             self.memory[index as usize + 1] = (instruction & Self::XXFF_BITMASK) as u8; 
             index += 2;
         }
+
+        Ok(())
     }
 
+    /// this fn loads a font into memory based on the font object given in the ctor
     pub fn load_font(&mut self) {
         let mut font_data_index : usize = self.font.font_location_in_memory;
 
@@ -158,50 +166,23 @@ impl Chip8 {
         }
     }
 
-    /// this is the main processor loop for the chip 8 
+    /// this fn is for calling one frame of the procesor 
     /// 
-    /// the loop works as follows :
-    /// fetch -> decode -> execute -> incf pc 
+    /// will return true if there is still memory left to read
     /// 
-    /// the loop will run at a fixed speed of 1mhz simulated
-    pub fn start_processor_loop(&mut self) {
-        loop {
-            self.keyboard = self.window.handle_input();
-
-            let instruction_start_time = time::Instant::now();
-
-            // if the program counter has run out of instructions break out of the processor loop
-            if self.pc_reg as usize > Self::PROGRAM_MEMORY_SIZE - 1 { break }
-
-            // decode and execute will both read the contents of the instruction and then execute the instruction afterwards
-            let instruction = self.fetch();
-
-            self.decode_and_execute(instruction);
-
-            // TODO SEPARATE THIS OUT INTO A FUNCTION TO MAKE IT HAVE MASTER AUTHORITY ON THE PROGRAM COUNTER
-            // if there was a jump (or later on probably a call) dont increment the program counter
-            if !self.jumped_flag_reg {
-                self.pc_reg += 2;
-            } else {
-                self.jumped_flag_reg = false;
-            }
-            
-            if self.delay_timer_register != 0 {
-                self.delay_timer_register -= 1
-            }
-
-            if self.sound_timer_register != 0 {
-                self.sound_timer_register -= 1
-            }
-
-            let operation_duration = Self::CLOCK_SLEEP_TIME_SECONDS -instruction_start_time.elapsed().as_secs_f64();
-            if operation_duration > 0.0 {
-                thread::sleep(time::Duration::from_secs_f64(operation_duration));
-            }
-
-            //draw the window
-            self.window.draw_canvas(self.display_buffer.clone());
+    /// will return false if there is no memory left to read
+    pub fn processor_frame(&mut self, keyboard : Keyboard) -> bool {
+        if self.pc_reg as usize > Self::PROGRAM_MEMORY_SIZE - 1 { 
+            return false;
         }
+        
+        let instruction = self.fetch();
+
+        self.keyboard = keyboard;
+
+        self.decode_and_execute(instruction);
+
+        true
     }
 
     pub fn fetch(&self) -> u16 {
@@ -243,31 +224,29 @@ impl Chip8 {
                 self.add_reg_vx_instruction(reg as usize, num as u8, false);
             }
 
-            // set index register i
+            // set index register i instruction
             i if i & Self::FXXX_BITMASK == 0xA000 => {
                 let number = i & Self::XFFF_BITMASK;
                 self.set_index_reg_instruction(number)
             }
             
-            // draw/display 
-            //TODO IMPLEMENT DRAW DISPLAY
+            // draw sprite instruction
             i if i & Self::FXXX_BITMASK == 0xD000 => {
                 let x_coordinate = self.v_regs[((i & Self::XFXX_BITMASK) >> 8) as usize];
                 let y_coordinate = self.v_regs[((i & Self::XXFX_BITMASK) >> 4) as usize];
                 let sprite_height = (i & Self::XXXF_BITMASK) as u8;
-                self.draw_display_instruction(x_coordinate, y_coordinate, sprite_height);
+                self.draw_sprite_instruction(x_coordinate, y_coordinate, sprite_height);
             },
 
-            // TODO return
+            // return instruction
             0x00EE => self.return_instruction(),
 
-            // TODO call
+            // call instruction
             i if i & Self::FXXX_BITMASK == 0x2000 => { 
                 let location = i & Self::XFFF_BITMASK;
                 self.call_instruction(location);
             }
 
-            // TODO skip if vx is equal to nn
             // for instructions : 3XNN 4XNN 5XY0 9XY0
             i if i & Self::FXXX_BITMASK == 0x3000 || 
                  i & Self::FXXX_BITMASK == 0x4000 || 
@@ -298,9 +277,7 @@ impl Chip8 {
 
                     // TODO FIX THIS SOMETHING IS WRONG HERE
                     j if j == 0xE000 => match i & Self::XXFF_BITMASK {
-                        0x009E =>{
-                            self.skipif_vx_reg_nn_instruction(first_reg_value, key_code, true)
-                        },
+                        0x009E => self.skipif_vx_reg_nn_instruction(first_reg_value, key_code, true),
                         0x00A1 => self.skipif_vx_reg_nn_instruction(first_reg_value, key_code, false),
                         _ => {}
                     },
@@ -346,20 +323,19 @@ impl Chip8 {
                 self.random_instruction(reg, num);
             }
 
-            // TODO fill this in all the way
             i if i & Self::FXXX_BITMASK == 0xF000 => {
                 let reg = ((i & Self::XFXX_BITMASK) >> 8) as usize;
 
                 match i & Self::XXFF_BITMASK {
-                0x0007 => self.set_vx_reg_instruction(reg, self.delay_timer_register),
-                0x0015 => self.set_delay_timer_reg_instruction(self.v_regs[reg]),
-                0x0018 => self.set_sound_timer_reg_instruction(self.v_regs[reg]),
-                0x001E => self.add_to_index_reg_instruction(self.v_regs[reg] as u16),
-                0x000A => self.get_key_instruction(reg),
-                0x0029 => self.set_index_to_font_char_instruction(self.v_regs[reg] as usize),
-                0x0033 => self.bcd_instruction(reg),
-                0x0055 => self.store_to_memory_instruction(reg),
-                0x0065 => self.load_from_memory_instruction(reg),
+                    0x0007 => self.set_vx_reg_instruction(reg, self.delay_timer_register),
+                    0x0015 => self.set_delay_timer_reg_instruction(self.v_regs[reg]),
+                    0x0018 => self.set_sound_timer_reg_instruction(self.v_regs[reg]),
+                    0x001E => self.add_to_index_reg_instruction(self.v_regs[reg] as u16),
+                    0x000A => self.get_key_instruction(reg),
+                    0x0029 => self.set_index_to_font_char_instruction(self.v_regs[reg] as usize),
+                    0x0033 => self.bcd_instruction(reg),
+                    0x0055 => self.store_to_memory_instruction(reg),
+                    0x0065 => self.load_from_memory_instruction(reg),
                     _ => {}
                 }
             }
@@ -368,74 +344,89 @@ impl Chip8 {
         }
     }
 
-    /// this will invert the colors of the display 
-    pub fn invert_colors(&mut self) {
-        self.window.invert_colors();
+    /// this fn is for updating the timers so that the timers can decrement once per frame which is detached from the chip8 clock 
+    pub fn update_timers(&mut self) {
+        if self.delay_timer_register != 0 {
+            self.delay_timer_register -= 1
+        }
+
+        if self.sound_timer_register != 0 {
+            self.sound_timer_register -= 1
+        }
     }
 
-    /// this will set every byte storing info for the display to off
-    /// 
-    /// in decoder
+
+
+    /// this fn will set every byte storing info for the display to off
     /// 
     /// for instructions : 00E0
     pub fn clear_display_instruction(&mut self) {
         self.display_buffer = vec![vec![false; Self::SCREEN_WIDTH]; Self::SCREEN_HEIGHT];
+        self.pc_reg += 2
     }
 
-    /// this will just set the program counter to a specific location in program memory of NNN
-    /// 
-    /// in decoder
+    /// this fn will just set the program counter to a specific location in program memory of NNN
     /// 
     /// for instructions : 1NNN
     pub fn jump_instruction(&mut self, location : u16) {
         self.pc_reg = location;
-        self.jumped_flag_reg = true
+        // self.jumped_flag_reg = true
     }
 
-    /// this sets the index register to a specific number
-    /// 
-    /// in decoder
+    /// this fn sets the index register to a specific number
     /// 
     /// for instructions : ANNN
     pub fn set_index_reg_instruction(&mut self, num : u16) {
         self.index_reg = num;
+        self.pc_reg += 2
     }
 
+    /// this fn will add a number to the index register
+    /// 
+    ///  for instructions 
     pub fn add_to_index_reg_instruction(&mut self, num : u16) {
         self.index_reg = self.index_reg.wrapping_add(num);
+        self.pc_reg += 2
     }
 
+    /// this fn will set the value in the delay timer reg
     ///
+    /// for instructions 
     pub fn set_delay_timer_reg_instruction(&mut self, num : u8) {
         self.delay_timer_register = num;
+        self.pc_reg += 2
     }
 
-    ///
+    /// this fn will set the value in the sound timer reg
+    /// 
+    /// for instructions 
     pub fn set_sound_timer_reg_instruction(&mut self, num : u8) {
         self.sound_timer_register = num;
+        self.pc_reg += 2
     }
 
-    /// this function will decrement the program counter by 2 in order to make this a blocking instruction
-    /// this is a hacky solution but it is fixable later
-    ///  
-    /// TODO : create a pc_reg_control function to handle managing the pc
+    /// this fn will keep blocking by not incrementing the pc while it waits for input
+    /// 
+    /// for instructions 
     pub fn get_key_instruction(&mut self, reg : usize) {
         // let keyboard_result = self.window.handle_input();
         match self.keyboard.get_keycode() {
-            key_code if key_code <= 0xf => self.v_regs[reg] = key_code,
-            _ => self.pc_reg -= 2,
+            key_code if key_code <= 0xf => {
+                self.v_regs[reg] = key_code;
+                self.pc_reg += 2
+            },
 
-            // Keyboard::None => self.pc_reg -= 2,
-            // _ => self.v_regs[reg] = keyboard_result.get_keycode().unwrap()
+            // if there was no key pressed dont advance the pc so that this instruction keeps executing
+            _ => {}
         }
     }
 
+    /// this fn will draw a sprite at a given x and y coordinate to a given sprite height
     /// 
-    /// 
-    /// in decoder
+    /// the vf register will get flipped 
     /// 
     /// for instructions : DXYN
-    pub fn draw_display_instruction(&mut self, x_coordinate : u8, y_coordinate : u8, sprite_height : u8) {
+    pub fn draw_sprite_instruction(&mut self, x_coordinate : u8, y_coordinate : u8, sprite_height : u8) {
 
         // make sure that x coordinate is not running off the side of the screen
         let x_coordinate = x_coordinate % Self::SCREEN_WIDTH as u8;
@@ -451,7 +442,7 @@ impl Chip8 {
             // TODO : look into double ended iterators to make this a bit cleaner
             let mut sprite_slice_iter = 0..8;
             
-            // this is the loop for the individual columns 
+            // this is the loop for the individual columns  
             'columns : for shift_amount in sprite_slice_iter.clone().rev() {
 
                 // this gets the individual bit for a given column in the sprite row
@@ -476,10 +467,8 @@ impl Chip8 {
                 // if there was a pixel already shaded on that position then set the shade to false and the vf flag reg to true
                 // else shade that pixel
                 } else if bit != 0 {
-                    // self.vf_flag_reg = false;
                     self.v_regs[0xf] = 0;
                     if self.display_buffer[(y_coordinate) as usize][(x_coordinate) as usize] {
-                        // self.vf_flag_reg = true;
                         self.v_regs[0xf] = 1;
                         self.display_buffer[(y_coordinate) as usize][(x_coordinate) as usize] = false;
                     } else {
@@ -488,11 +477,10 @@ impl Chip8 {
                 }
             }
         }
+        self.pc_reg += 2
     }
     
     ///
-    /// 
-    /// in decoder
     /// 
     /// for instructions : EE00
     pub fn return_instruction(&mut self) {
@@ -501,24 +489,18 @@ impl Chip8 {
             panic!("error : stack underflow");
         }
         self.pc_reg = return_address.unwrap();
-        self.jumped_flag_reg = true;
     }
 
     /// 
-    /// 
-    /// in decoder
     /// 
     /// for instructions : 2NNN 
     pub fn call_instruction(&mut self, location : u16) {
         // + 2 to make sure that it executes the NEXT instruction once a return is hit
         self.stack.push(self.pc_reg + 2);
         self.pc_reg = location;
-        self.jumped_flag_reg = true
     }
 
     /// 
-    /// 
-    /// in decoder
     /// 
     /// for instructions : 3XNN 4XNN 5XY0 9XY0 EX9E EXA1
     pub fn skipif_vx_reg_nn_instruction(&mut self, reg_val : u8, num : u8, equality : bool) {
@@ -526,22 +508,22 @@ impl Chip8 {
         // if you have the register equal to the number and you do want them to be equal equality will be true and this is true
         // if they are not equal and you do not want them to be equal this will go through
         if (reg_val == num) == equality {
+            self.pc_reg += 4
+        }
+        else {
             self.pc_reg += 2
         }
     }
 
     ///
     /// 
-    /// in decoder
-    /// 
     /// for instructions : 6XNN
     pub fn set_vx_reg_instruction(&mut self, reg : usize, num : u8) {
-        self.v_regs[reg] = num
+        self.v_regs[reg] = num;
+        self.pc_reg += 2
     }
 
     /// 
-    /// 
-    /// NOT in decoder
     /// 
     /// for instructions : 8XY1 8XY2 8XY3
     pub fn bin_op_vx_reg_instruction(&mut self, reg : usize, num : u8, op : BinaryOp) {
@@ -551,38 +533,35 @@ impl Chip8 {
             // this MIGHT be wrong check later (probably fine tho because I think there is only binary xor no logical)
             BinaryOp::Xor => self.v_regs[reg] ^ num,
         };
+        self.pc_reg += 2
     }
 
-    ///
     /// 
-    /// in decoder but NOT FOR 8xy4
     /// 
     /// for instructions : 8XY4 7XNN 
     pub fn add_reg_vx_instruction(&mut self, reg : usize, num : u8, carry : bool) {
         // wrapping add will add and account for overflows
         if carry {
             match self.v_regs[reg].checked_add(num) {
-                // Some(_number) => self.vf_flag_reg = false,
-                // _ => self.vf_flag_reg = true
                 Some(_number) => self.v_regs[0xf] = 0,
                 _ => self.v_regs[0xf] = 1
             }
         }
 
-        self.v_regs[reg] = self.v_regs[reg].wrapping_add(num)
+        self.v_regs[reg] = self.v_regs[reg].wrapping_add(num);
+
+        self.pc_reg += 2
     }
 
-    ///
+    /// this will do a subtraction on reg with a given num. 
     /// 
     /// for instructions : 8XY5 8XY7
     pub fn subtract_vx_reg_instruction(&mut self, reg : usize, num : u8, flipped : bool) {
-        // self.vf_flag_reg = true;
         self.v_regs[0xf] = 1; 
         self.v_regs[reg] = if flipped {
             match num.checked_sub(self.v_regs[reg]) {
                 Some(result) => result,
                 None => {
-                    // self.vf_flag_reg = false;
                     self.v_regs[0xf] = 0; 
                     num.wrapping_sub(self.v_regs[reg])
                 }
@@ -591,53 +570,57 @@ impl Chip8 {
             match self.v_regs[reg].checked_sub(num) {
                 Some(result) => result, 
                 None => {
-                    // self.vf_flag_reg = false;
                     self.v_regs[0xf] = 0; 
                     self.v_regs[reg].wrapping_sub(num)
                 }
             }
-        }
+        };
+
+        self.pc_reg += 2
     }
 
-    ///
+    /// this fn binary shifts the value in reg right and left
     /// 
     /// for instructions : 8XY6 8XYE
     pub fn shift_vx_register(&mut self, reg : usize, right_shift : bool) {
         self.v_regs[reg] = if right_shift {
-            // self.vf_flag_reg = (self.general_regs[reg] & Self::BIT1_BITMASK) != 0;
             self.v_regs[0xf] = self.v_regs[reg] & Self::BIT1_BITMASK;
             self.v_regs[reg] >> 1
         } else {
-            // self.vf_flag_reg = (self.general_regs[reg] & Self::BIT8_BITMASK) != 0; 
             self.v_regs[0xf] = self.v_regs[reg] & Self::BIT8_BITMASK;
             self.v_regs[reg] << 1
-        }
+        };
+
+        self.pc_reg += 2
     }
 
-    ///
+    /// this fn will jump to a given location with the offset of whatever is in the given register usually v0
     /// 
     /// for instructions : BXNN
     pub fn jump_with_offset_instruction(&mut self, reg : usize, offset : u16) {
         self.pc_reg += offset;
         self.pc_reg += self.v_regs[reg] as u16; 
-        self.jumped_flag_reg = true;
     }
 
-    ///
+    /// this fn sets reg vx to a random number
     /// 
-    /// for instructions : CXNN
+    /// for instructions : cxnn
     pub fn random_instruction(&mut self, reg : usize, num : u8) {
         self.v_regs[reg] = self.rng.gen_range(0..u8::MAX) & num;
+        self.pc_reg += 2
     }
 
     /// this will set the index register to the location of a font char's sprite
     /// 
     /// for instructions fx33
     pub fn set_index_to_font_char_instruction(&mut self, char : usize) {
-        self.index_reg = self.font.char_sprite_locations[char]
+        self.index_reg = self.font.char_sprite_locations[char];
+        self.pc_reg += 2
     }
 
-    /// TODO : IMPLEMENT AFTER THE LOAD AND STORE FROM MEM INSTRUCTION IMPLEMENTED
+    /// this fn will store a bcd representation of reg x at the location in the index reg
+    /// 
+    /// for instructions fx33
     pub fn bcd_instruction(&mut self, reg : usize) {
         let reg_val = self.v_regs[reg];
         let index = self.index_reg as usize;
@@ -649,28 +632,27 @@ impl Chip8 {
         self.memory[index] = first_byte_hundreds;
         self.memory[index + 1] = second_byte_tens;
         self.memory[index + 2] = third_byte_ones;
+        
+        self.pc_reg += 2
     }
 
-    ///
+    /// this fn dumps the contents of all of the v registers to a given location in memory up to a given reg
+    /// 
+    /// if you were to select reg vf it should store the contents of every single reg
     /// 
     /// for instructions fx55
     pub fn store_to_memory_instruction(&mut self, reg : usize) {
-        // if self.v_regs[0] == 0 {
-        //     self.memory[self.index_reg as usize] = self.v_regs[reg]
-        // } else {
-        //     for (i, val) in self.v_regs.iter().enumerate() {
-        //         self.memory[self.index_reg as usize + i] = *val;
-        //         if i == reg { break }
-        //     }
-        // }
-
         for (i, val) in self.v_regs.iter().enumerate() {
             self.memory[self.index_reg as usize + i] = *val;
             if i == reg { break }
         }
+
+        self.pc_reg += 2
     }
 
-    ///
+    /// this fn loads memory into the regs from the location of the value that the index reg is holding
+    /// 
+    /// this fn will only load values up to a given reg number so if you were to pick reg vf it will fill all 16 regs 
     /// 
     /// for instructions fx65
     pub fn load_from_memory_instruction(&mut self, reg : usize) {
@@ -681,5 +663,7 @@ impl Chip8 {
                 self.v_regs[i - self.index_reg as usize] = self.memory[i]
             }
         }
+
+        self.pc_reg += 2
     }
 }
