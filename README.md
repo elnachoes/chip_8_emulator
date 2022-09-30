@@ -1,6 +1,6 @@
 # rip8
 
-This is a chip 8 emulator I wrote for fun in Rust and OpenGL with sdl2 as a compatibility layer. 
+This is a chip 8 emulator I wrote for fun in Rust and OpenGL with sdl2. 
 
 The emulator works for the most part at this point in time and is compatible with most Chip8 games however there is no audio beep yet and the input is a little weird and I am working on a fix for both
 
