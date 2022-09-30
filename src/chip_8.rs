@@ -6,8 +6,11 @@ use rand::{
 
 use std::{
     fs::File,
-    io::{BufRead, Read},
-    io::BufReader,
+    io::{
+        BufRead,
+        Read,
+        BufReader
+    },
     vec,
 };
 

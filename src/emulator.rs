@@ -14,7 +14,6 @@ pub fn run_emulator(hertz : u32, rom_path : &String) {
     chip8_window.invert_colors();
 
     loop {
-
         let start_frame_time = time::Instant::now();
 
         let keyboard = chip8_window.handle_input();
@@ -31,6 +30,8 @@ pub fn run_emulator(hertz : u32, rom_path : &String) {
 
         let remaining_frame_time = FRAME_TIME - start_frame_time.elapsed().as_secs_f64();
 
-        thread::sleep(time::Duration::from_secs_f64(remaining_frame_time))
+        if remaining_frame_time.is_sign_positive() {
+            thread::sleep(time::Duration::from_secs_f64(remaining_frame_time))
+        } 
     }
 }

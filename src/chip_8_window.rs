@@ -37,7 +37,10 @@ impl Chip8Window {
             "chip-8-emulator", 
             (Self::SCREEN_WIDTH * Self::PIXEL_SIZE) as u32,
             (Self::SCREEN_HEIGHT * Self::PIXEL_SIZE) as u32,)
-            .position_centered().build().unwrap();
+            .position_centered()
+            .opengl()
+            .build()
+            .unwrap();
 
         let canvas = window.into_canvas().build().unwrap();
     
