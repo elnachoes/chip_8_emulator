@@ -9,8 +9,6 @@ use sdl2::{
     keyboard::Keycode, AudioSubsystem, audio::{AudioCallback, AudioSpecDesired, AudioDevice}
 };
 
-use std::time::Duration;
-
 use crate::Keyboard;
 
 static OFF_COLOR : Color = Color::RGB(255,255,255);
@@ -119,7 +117,7 @@ impl Chip8Window {
         }
     }
 
-    
+
 
     // have this return a set of pressed keys back to the chip8
     pub fn handle_input(&mut self) -> Keyboard {
