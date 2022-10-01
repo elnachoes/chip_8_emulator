@@ -28,6 +28,12 @@ pub fn run_emulator(hertz : u32, rom_path : &String) {
         
         chip8.update_timers();
 
+        if chip8.sound_timer_register != 0 {
+            chip8_window.audio_device.resume();
+        } else {
+            chip8_window.audio_device.pause();
+        }
+
         let remaining_frame_time = FRAME_TIME - start_frame_time.elapsed().as_secs_f64();
 
         // if you move the window for some reason the time duration might be negative so this prevents a crashs

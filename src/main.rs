@@ -17,3 +17,4 @@ fn main() {
 
     run_emulator(hertz, &args[2]);
 }
+

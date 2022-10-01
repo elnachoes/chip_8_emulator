@@ -6,13 +6,38 @@ use sdl2::{
     rect::Rect,
     EventPump,
     event::Event,
-    keyboard::Keycode
+    keyboard::Keycode, AudioSubsystem, audio::{AudioCallback, AudioSpecDesired, AudioDevice}
 };
+
+use std::time::Duration;
 
 use crate::Keyboard;
 
 static OFF_COLOR : Color = Color::RGB(255,255,255);
 static ON_COLOR : Color = Color::RGB(0,0,0);
+
+pub struct SquareWave {
+    phase_inc: f32,
+    phase: f32,
+    volume: f32
+}
+
+impl AudioCallback for SquareWave {
+    type Channel = f32;
+
+    fn callback(&mut self, out: &mut [f32]) {
+        // Generate a square wave
+        for x in out.iter_mut() {
+            *x = if self.phase <= 0.5 {
+                self.volume
+            } else {
+                -self.volume
+            };
+            self.phase = (self.phase + self.phase_inc) % 1.0;
+        }
+    }
+}
+
 
 pub struct Chip8Window {
     pub sdl_context : Sdl,
@@ -21,6 +46,10 @@ pub struct Chip8Window {
     pub event_pump : EventPump,
     pub off_color : Color,
     pub on_color : Color,
+
+    pub audio_subsystem : AudioSubsystem,
+    pub audio_spec : AudioSpecDesired,
+    pub audio_device : AudioDevice<SquareWave>
 }
 
 impl Chip8Window {
@@ -32,7 +61,23 @@ impl Chip8Window {
         let sdl_context = sdl2::init().unwrap();
         
         let video_subsystem = sdl_context.video().unwrap();
-    
+        let audio_subsystem = sdl_context.audio().unwrap();
+
+        let audio_spec = AudioSpecDesired {
+            freq: Some(44110),
+            channels: Some(1),  // mono audio
+            samples: None
+        };
+
+        let audio_device = audio_subsystem.open_playback(None, &audio_spec, |spec| {
+            // audio callback
+            SquareWave {
+                phase_inc: 440.0 / spec.freq as f32,
+                phase: 0.0,
+                volume: 0.25
+            }
+        }).unwrap();
+
         let window = video_subsystem.window(
             "rip8", 
             (Self::SCREEN_WIDTH * Self::PIXEL_SIZE) as u32,
@@ -53,6 +98,10 @@ impl Chip8Window {
             event_pump : event_pump,
             off_color : OFF_COLOR,
             on_color : ON_COLOR,
+
+            audio_subsystem : audio_subsystem,
+            audio_spec : audio_spec,
+            audio_device : audio_device,
         }
     }
 
@@ -69,6 +118,8 @@ impl Chip8Window {
             OFF_COLOR
         }
     }
+
+    
 
     // have this return a set of pressed keys back to the chip8
     pub fn handle_input(&mut self) -> Keyboard {

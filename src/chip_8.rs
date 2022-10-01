@@ -15,10 +15,15 @@ use std::{
 };
 
 use crate::{
-    BinaryOp, 
     Keyboard,
     Font
 };
+
+pub enum BinaryOp {
+    Or,
+    And,
+    Xor,
+}
 
 pub struct Chip8 {
     // memory for the chip8 should be 4k
@@ -57,6 +62,8 @@ pub struct Chip8 {
 }
 
 impl Chip8 {
+
+
     const SCREEN_HEIGHT : usize = 32;
     const SCREEN_WIDTH : usize = 64;
     const PROGRAM_MEMORY_SIZE : usize = 4096;

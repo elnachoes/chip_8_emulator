@@ -1,6 +1,3 @@
-pub mod binary_op;
-pub use binary_op::BinaryOp;
-
 pub mod chip_8_window;
 pub use chip_8_window::Chip8Window;
 
@@ -15,3 +12,6 @@ pub use chip_8::Chip8;
 
 pub mod emulator;
 pub use emulator::run_emulator;
+
+pub mod square_wave;
+pub use square_wave::SquareWave;
