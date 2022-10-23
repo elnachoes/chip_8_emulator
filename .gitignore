@@ -1,5 +1,7 @@
 /target
 
 /.vscode
+/.vs
 
-/fullgames
+/WindowsRelease
+/WindowsRelease.7z
