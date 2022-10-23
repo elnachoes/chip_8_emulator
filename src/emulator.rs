@@ -17,7 +17,7 @@ pub fn run_emulator(hertz : u32, rom_path : &String) {
         let start_frame_time = time::Instant::now();
 
         let keyboard = chip8_window.handle_input();
-
+        
         for _ in 0..hertz {
             if !chip8.processor_frame(keyboard.clone()) {
                 return
